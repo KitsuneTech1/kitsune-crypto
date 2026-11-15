@@ -1,10 +1,15 @@
-"""Lightweight dashboard and invariant telemetry server for Kitsune Private Layer."""
+"""Lightweight dashboard and invariant telemetry server for Kitsune Private Layer.
+Streams live cluster telemetry from Proxmox PVE2 validator nodes (CT 401..404).
+"""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -30,24 +35,64 @@ from core.consensus import (
     calculate_block_reward,
     TAIL_EMISSION_ATOMIC,
 )
-from core.ledger import LedgerState, Transaction, TransactionInput, TransactionOutput
-
-# Initialize live consensus simulation
-mock_validators = [
-    Validator("val_node_1", "pk_1"),
-    Validator("val_node_2", "pk_2"),
-    Validator("val_node_3", "pk_3"),
-    Validator("val_node_4", "pk_4"),
-]
-consensus = BftConsensusEngine(mock_validators)
-ledger = LedgerState()
+from core.ledger import LedgerState, Transaction
 
 HTML_PATH = Path(__file__).resolve().parent / "index.html"
+CLUSTER_NODES = [
+    ("node-0", "192.168.1.201:9200"),
+    ("node-1", "192.168.1.202:9200"),
+    ("node-2", "192.168.1.203:9200"),
+    ("node-3", "192.168.1.204:9200"),
+]
+
+
+def query_cluster_telemetry() -> dict:
+    node_reports = []
+    latest_height = 0
+    latest_hash = ""
+    recent_blocks = []
+    active_count = 0
+
+    for node_id, addr in CLUSTER_NODES:
+        try:
+            req = urllib.request.Request(f"http://{addr}/status", headers={"User-Agent": "KPL-Dashboard"})
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read().decode())
+                h = data.get("height", 0)
+                if h > latest_height:
+                    latest_height = h
+                    latest_hash = data.get("latest_hash", "")
+                    recent_blocks = data.get("recent_blocks", [])
+                active_count += 1
+                node_reports.append({
+                    "id": node_id,
+                    "addr": addr,
+                    "status": "ONLINE",
+                    "height": h,
+                    "hash": data.get("latest_hash", "")[:16],
+                })
+        except Exception:
+            node_reports.append({
+                "id": node_id,
+                "addr": addr,
+                "status": "OFFLINE",
+                "height": 0,
+                "hash": "---",
+            })
+
+    return {
+        "active_nodes": active_count,
+        "total_nodes": len(CLUSTER_NODES),
+        "quorum_threshold": 3,
+        "height": latest_height,
+        "latest_hash": latest_hash,
+        "nodes": node_reports,
+        "recent_blocks": recent_blocks[-6:],
+    }
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Quiet logger
         pass
 
     def send_json(self, status: int, data: dict):
@@ -75,18 +120,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if url == "/api/status":
-            # Auto-advance height slightly
-            height = 14892 + int(time.time() // 10) % 100
+            cluster = query_cluster_telemetry()
+            height = cluster["height"] if cluster["height"] > 0 else 14892
             emitted = 18400000 * 1_000_000 + (height * TAIL_EMISSION_ATOMIC)
             self.send_json(200, {
                 "height": height,
+                "latest_hash": cluster["latest_hash"],
                 "total_emitted": emitted,
                 "reward_atomic": TAIL_EMISSION_ATOMIC,
                 "tail_active": True,
-                "quorum_threshold": consensus.quorum_threshold,
-                "validators": len(mock_validators),
-                "invariants_proven": 6,
+                "quorum_threshold": cluster["quorum_threshold"],
+                "active_nodes": cluster["active_nodes"],
+                "total_nodes": cluster["total_nodes"],
+                "invariants_proven": 7,
+                "nodes": cluster["nodes"],
+                "recent_blocks": cluster["recent_blocks"],
             })
+            return
+
+        if url == "/api/cluster":
+            cluster = query_cluster_telemetry()
+            self.send_json(200, cluster)
             return
 
         if url == "/api/wallet/generate":
@@ -101,13 +155,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if url == "/api/tx/simulate":
             alice = StealthWalletKeys.generate()
             bob = StealthWalletKeys.generate()
-            # 1. Output creation
             P_out, R_tx, _ = create_stealth_output(bob.view_public, bob.spend_public)
-            # 2. Key image
             P_real, R_real, _ = create_stealth_output(alice.view_public, alice.spend_public)
             _, real_priv = scan_stealth_output(R_real, P_real, alice)
             key_image = compute_key_image(real_priv, P_real)
-            # 3. Ring with 3 decoys
             decoys = [StealthWalletKeys.generate().spend_public for _ in range(3)]
             ring = [decoys[0], P_real, decoys[1], decoys[2]]
             sig = create_ring_signature(b"KPL-TX-SIMULATION", ring, real_index=1, secret_key=real_priv)
