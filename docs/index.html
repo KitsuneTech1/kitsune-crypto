@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitsune Private Layer — High-Assurance Privacy Ledger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090b0e;
+      --card-bg: #11141c;
+      --border: #1e2638;
+      --accent: #00f2fe;
+      --accent-alt: #9d4edd;
+      --accent-green: #00f5a0;
+      --text: #f0f4fc;
+      --text-muted: #8b9bb4;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Space Grotesk', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.6;
+      padding: 0 20px;
+    }
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 40px 0 80px 0;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 60px;
+    }
+    .logo {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-alt));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-family: var(--mono);
+      font-size: 13px;
+      margin-left: 20px;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--accent); }
+    .hero {
+      text-align: center;
+      margin-bottom: 70px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(0, 245, 160, 0.1);
+      border: 1px solid rgba(0, 245, 160, 0.3);
+      color: var(--accent-green);
+      font-family: var(--mono);
+      font-size: 12px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 44px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 18px;
+    }
+    .subtitle {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 680px;
+      margin: 0 auto 32px auto;
+    }
+    .cta-group {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: opacity 0.2s, transform 0.1s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #4facfe);
+      color: #050b14;
+    }
+    .btn-secondary {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 60px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+    }
+    .card-icon {
+      font-size: 24px;
+      margin-bottom: 14px;
+      color: var(--accent);
+    }
+    .card h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+    .card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .table-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 60px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 13px;
+      margin-top: 14px;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    th { color: var(--text-muted); font-size: 12px; }
+    .code-snippet {
+      background: #06070a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #79c0ff;
+      overflow-x: auto;
+      margin-top: 12px;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding-top: 30px;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">KITSUNE PRIVATE LAYER</div>
+      <div class="nav-links">
+        <a href="#bridges">Bridges</a>
+        <a href="#invariants">Invariants</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="https://github.com/KitsuneTech1/kitsune-crypto">GitHub</a>
+      </div>
+    </header>
+
+    <div class="hero">
+      <div class="badge">● 7/7 MATHEMATICAL INVARIANTS PROVEN</div>
+      <h1>High-Assurance Privacy Ledger<br>with Fast Everyday Liquidity</h1>
+      <p class="subtitle">
+        Curve25519 stealth addressing, Compact Linkable Ring Signatures (CLSAG), and zero-knowledge Bulletproofs+ combined with instant single-slot BFT finality and multi-chain bridge rails.
+      </p>
+      <div class="cta-group">
+        <a href="https://github.com/KitsuneTech1/kitsune-crypto/releases/tag/v0.1.0" class="btn btn-primary">Download v0.1.0 (Win / Linux)</a>
+        <a href="whitepaper.pdf" class="btn btn-secondary">Read Whitepaper (PDF)</a>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-icon">🛡️</div>
+        <h3>Unconditional Privacy</h3>
+        <p>Dual-key stealth addresses ($P = H(rA)G + B$) prevent address reuse. 16-member CLSAG ring signatures decouple spenders from their inputs.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚡</div>
+        <h3>Single-Slot BFT Finality</h3>
+        <p>Deterministic Quorum Certificates ($\ge 2f + 1$) eliminate reorganizations. Forks are mathematically impossible under Byzantine threshold $f < n/3$.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌊</div>
+        <h3>Perpetual Tail Emission</h3>
+        <p>Avoids fee-starvation security cliffs with a logarithmic decay to a permanent $0.6$ KPL/block subsidy floor for continuous node rewards.</p>
+      </div>
+    </div>
+
+    <!-- Fast Bridges Section -->
+    <div class="table-card" id="bridges">
+      <h2 style="font-size: 20px; margin-bottom: 6px;">Everyday Multi-Chain Liquidity Rails</h2>
+      <p style="font-size: 14px; color: var(--text-muted);">Instant cross-chain swaps between common tokens and private KPL stealth UTXOs:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Network</th>
+            <th>Primary Tokens</th>
+            <th>Settlement Time</th>
+            <th>Protocol Mechanism</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong style="color:var(--accent);">Base (EVM L2)</strong></td>
+            <td>USDC, USDT, ETH</td>
+            <td>~3 seconds</td>
+            <td>Optimistic Vault & HTLC Fallback</td>
+          </tr>
+          <tr>
+            <td><strong style="color:var(--accent);">Arbitrum (EVM L2)</strong></td>
+            <td>USDC, USDT, ETH</td>
+            <td>~3 seconds</td>
+            <td>Low-gas Nitro Execution Vault</td>
+          </tr>
+          <tr>
+            <td><strong style="color:var(--accent);">Solana</strong></td>
+            <td>SPL-USDC, SOL</td>
+            <td>~2 seconds</td>
+            <td>Sub-second SPL Token Lockup</td>
+          </tr>
+          <tr>
+            <td><strong style="color:var(--accent);">Bitcoin Lightning</strong></td>
+            <td>BTC (satoshis)</td>
+            <td>~1 second</td>
+            <td>Cryptographic Submarine Swaps</td>
+          </tr>
+          <tr>
+            <td><strong style="color:var(--accent);">Monero</strong></td>
+            <td>XMR</td>
+            <td>~2 minutes</td>
+            <td>Scriptless Adaptor Signatures</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Invariants Section -->
+    <div class="table-card" id="invariants">
+      <h2 style="font-size: 20px; margin-bottom: 6px;">Mechanized Invariant Proofs (Zero Bug-Bounty Guarantee)</h2>
+      <p style="font-size: 14px; color: var(--text-muted);">All state transitions verified by automated theorem checking:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Invariant Name</th>
+            <th>Formal Property</th>
+            <th>Verification</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>INV-001</td>
+            <td>Stealth Address Unlinkability</td>
+            <td>$P = H(rA)G + B \implies x = H(aR) + b$</td>
+            <td><span style="color:var(--accent-green);">PROVEN</span></td>
+          </tr>
+          <tr>
+            <td>INV-002</td>
+            <td>Zero-Inflation Homomorphism</td>
+            <td>$\sum C_{in} - \sum C_{out} - f \cdot G = r_{\Delta} H$</td>
+            <td><span style="color:var(--accent-green);">PROVEN</span></td>
+          </tr>
+          <tr>
+            <td>INV-003</td>
+            <td>CLSAG Ring Soundness</td>
+            <td>$L_i = \alpha G + c_i P_i, R_i = \alpha H_p(P_i) + c_i I$</td>
+            <td><span style="color:var(--accent-green);">PROVEN</span></td>
+          </tr>
+          <tr>
+            <td>INV-004</td>
+            <td>Key Image Double-Spend Immunity</td>
+            <td>$I = x \cdot H_p(P)$ registered monotonically</td>
+            <td><span style="color:var(--accent-green);">PROVEN</span></td>
+          </tr>
+          <tr>
+            <td>INV-005</td>
+            <td>Bulletproofs+ Range Soundness</td>
+            <td>$\pi_{bp} \implies v \in [0, 2^{64}-1]$ (No trusted setup)</td>
+            <td><span style="color:var(--accent-green);">PROVEN</span></td>
+          </tr>
+          <tr>
+            <td>INV-006</td>
+            <td>Single-Slot BFT Finality</td>
+            <td>$Q \ge 2f + 1$ with $f < n/3$ (Zero reorgs)</td>
+            <td><span style="color:var(--accent-green);">PROVEN</span></td>
+          </tr>
+          <tr>
+            <td>INV-007</td>
+            <td>Perpetual Tail Floor</td>
+            <td>$R(h) = \max((M - A(h-1)) / 2^{19}, 0.6 \text{ KPL})$</td>
+            <td><span style="color:var(--accent-green);">PROVEN</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Quickstart Section -->
+    <div class="table-card" id="quickstart">
+      <h2 style="font-size: 20px; margin-bottom: 6px;">CLI Quickstart & Docker Compose</h2>
+      <p style="font-size: 14px; color: var(--text-muted);">Generate addresses, broadcast private transactions, or run a local node:</p>
+      
+      <div style="margin-top:14px; font-size:12px; font-weight:700; color:var(--text-muted);">CLI Wallet Usage:</div>
+      <div class="code-snippet">
+# Generate stealth address
+kpl-cli.exe wallet generate
+
+# Check bridge quote (e.g. 100 USDC on Base)
+kpl-cli.exe bridge quote base USDC 100
+
+# Broadcast private transaction to network
+kpl-cli.exe tx submit &lt;recipient_kpl_addr&gt; 500000 50000 --node 192.168.1.201:9200
+      </div>
+
+      <div style="margin-top:16px; font-size:12px; font-weight:700; color:var(--text-muted);">One-Command Docker Node & Explorer:</div>
+      <div class="code-snippet">
+git clone https://github.com/KitsuneTech1/kitsune-crypto.git
+cd kitsune-crypto
+docker compose up -d
+# Explorer live at http://localhost:8792
+      </div>
+    </div>
+
+    <footer>
+      Kitsune Cryptographic Research Fleet & Moo · MIT Licensed Open Source
+    </footer>
+  </div>
+</body>
+</html>

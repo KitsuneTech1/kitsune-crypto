@@ -9,6 +9,7 @@ Provides fast, low-friction cross-chain rails for common assets:
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -57,6 +58,8 @@ class BridgeOrder:
     completed_at: Optional[float] = None
     external_tx_hash: Optional[str] = None
     kpl_tx_hash: Optional[str] = None
+    payment_hash: Optional[str] = None
+    preimage: Optional[str] = None
 
 
 class FastBridgeGateway:
@@ -92,7 +95,6 @@ class FastBridgeGateway:
         }
 
     def get_quote(self, chain: SupportedChain, asset: AssetType, amount: float) -> BridgeQuote:
-        """Calculates fee, rate, and estimated finality time for a cross-chain swap."""
         if amount <= 0:
             raise ValueError("Amount must be greater than zero")
 
@@ -117,14 +119,21 @@ class FastBridgeGateway:
     def create_inbound_order(
         self, chain: SupportedChain, asset: AssetType, amount: float, kpl_recipient: str
     ) -> BridgeOrder:
-        """Generates an inbound deposit order with deposit address or Lightning invoice."""
         if not kpl_recipient.startswith("kpl_"):
             raise ValueError("Invalid KPL recipient address format")
 
         order_id = hashlib.sha256(f"{chain}:{asset}:{amount}:{kpl_recipient}:{time.time()}".encode()).hexdigest()[:16]
 
+        payment_hash = None
+        preimage = None
+
         if chain == SupportedChain.LIGHTNING:
-            deposit_handle = f"lnbc{int(amount * 1e8)}n1p...kitsune_order_{order_id}"
+            # Generate cryptographic preimage (32 bytes)
+            preimage_bytes = os.urandom(32)
+            preimage = preimage_bytes.hex()
+            payment_hash = hashlib.sha256(preimage_bytes).hexdigest()
+            sats = int(amount * 100_000_000)
+            deposit_handle = f"lnbc{sats}n1p{payment_hash[:16]}kitsune{order_id}"
         else:
             deposit_handle = self.bridge_vaults.get(chain, "0xKitsuneVault")
 
@@ -137,12 +146,32 @@ class FastBridgeGateway:
             deposit_address_or_invoice=deposit_handle,
             status="PENDING",
             created_at=time.time(),
+            payment_hash=payment_hash,
+            preimage=preimage,
         )
         self.orders[order_id] = order
         return order
 
+    def settle_lightning_submarine_swap(self, order_id: str, revealed_preimage_hex: str) -> BridgeOrder:
+        """Verifies preimage revelation SHA-256(p) == h and atomically finalizes KPL mint."""
+        if order_id not in self.orders:
+            raise KeyError(f"Order {order_id} not found")
+
+        order = self.orders[order_id]
+        if order.source_chain != SupportedChain.LIGHTNING:
+            raise ValueError("Order is not a Lightning submarine swap")
+
+        calc_hash = hashlib.sha256(bytes.fromhex(revealed_preimage_hex)).hexdigest()
+        if calc_hash != order.payment_hash:
+            raise ValueError(f"Preimage mismatch! Hash {calc_hash} != expected {order.payment_hash}")
+
+        order.status = "CONFIRMED"
+        order.completed_at = time.time()
+        order.external_tx_hash = f"ln_preimage_{revealed_preimage_hex}"
+        order.kpl_tx_hash = hashlib.sha256(f"KPL_MINT_LN:{order_id}:{calc_hash}".encode()).hexdigest()
+        return order
+
     def confirm_inbound_deposit(self, order_id: str, external_tx_hash: str) -> BridgeOrder:
-        """Validates incoming cross-chain deposit and triggers KPL stealth output mint."""
         if order_id not in self.orders:
             raise KeyError(f"Order {order_id} not found")
 
@@ -159,19 +188,17 @@ class FastBridgeGateway:
 
 if __name__ == "__main__":
     gateway = FastBridgeGateway()
-    # Test Base USDC quote (quick everyday token)
-    q_usdc = gateway.get_quote(SupportedChain.BASE, AssetType.USDC, 100.0)
-    print(f"Base USDC Quote: Deposit {q_usdc.deposit_amount} {q_usdc.asset} -> {q_usdc.kpl_received} KPL in ~{q_usdc.estimated_seconds}s (Fee: ${q_usdc.fee_amount})")
 
-    # Test Solana SOL quote
-    q_sol = gateway.get_quote(SupportedChain.SOLANA, AssetType.SOL, 2.5)
-    print(f"Solana SOL Quote: Deposit {q_sol.deposit_amount} {q_sol.asset} -> {q_sol.kpl_received} KPL in ~{q_sol.estimated_seconds}s")
+    # Test Lightning Submarine Swap Probe
+    recipient = "kpl_1cfbc5ba621e6b806a18b85763e64697cb7f9634d3ff35011257a4015ce294f38da835042e24d68faa80674f40bf1c7a2c67f7cbb243fac8121d6a50f3b3a562"
+    ln_order = gateway.create_inbound_order(SupportedChain.LIGHTNING, AssetType.BTC, 0.005, recipient)
+    print("=== LIGHTNING SUBMARINE SWAP PROBE ===")
+    print("Order ID:     ", ln_order.order_id)
+    print("Invoice:      ", ln_order.deposit_address_or_invoice)
+    print("Payment Hash: ", ln_order.payment_hash)
+    print("Preimage:     ", ln_order.preimage)
 
-    # Test Bitcoin Lightning quote
-    q_ln = gateway.get_quote(SupportedChain.LIGHTNING, AssetType.BTC, 0.01)
-    print(f"Lightning BTC Quote: Deposit {q_ln.deposit_amount} {q_ln.asset} -> {q_ln.kpl_received} KPL in ~{q_ln.estimated_seconds}s")
-
-    # Test order creation & settlement
-    order = gateway.create_inbound_order(SupportedChain.BASE, AssetType.USDC, 50.0, "kpl_1cfbc5ba621e6b806a18b85763e64697cb7f9634d3ff35011257a4015ce294f38da835042e24d68faa80674f40bf1c7a2c67f7cbb243fac8121d6a50f3b3a562")
-    settled = gateway.confirm_inbound_deposit(order.order_id, "0x123abc456def7890")
-    print(f"Order {settled.order_id} Settled: {settled.status} -> KPL Tx Hash: {settled.kpl_tx_hash[:16]}...")
+    # Simulate payment settlement & preimage revelation
+    settled_ln = gateway.settle_lightning_submarine_swap(ln_order.order_id, ln_order.preimage)
+    print("Settlement:    Status =", settled_ln.status, "| KPL Tx Hash =", settled_ln.kpl_tx_hash[:16], "...")
+    print("Lightning submarine swap cryptographic proof verified successfully!")

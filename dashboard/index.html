@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     :root {
       --bg-dark: #0a0c10;
@@ -185,6 +186,20 @@
       width: 100%;
       margin-bottom: 10px;
     }
+    .qr-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #080a0f;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px;
+      margin-top: 10px;
+    }
+    #qrcodeBox canvas, #qrcodeBox img {
+      border-radius: 6px;
+      border: 2px solid var(--border-color);
+    }
   </style>
 </head>
 <body>
@@ -192,7 +207,7 @@
     <div class="brand">
       <div>
         <div class="brand-title">KITSUNE PRIVATE LAYER // CORE</div>
-        <div class="brand-sub">Post-Hyper-Intelligence Resilient Architecture · Monero-Z Formal Verifier</div>
+        <div class="brand-sub">High-Assurance Privacy Ledger · Monero-Z Formal Verifier</div>
       </div>
     </div>
     <div class="chips">
@@ -204,7 +219,7 @@
   </div>
 
   <div class="grid">
-    <!-- One-Click Fast Multi-Chain Bridge Card -->
+    <!-- Fast Multi-Chain Bridge Card with Dark QR Code -->
     <div class="card">
       <div class="card-title">
         <span>FAST MULTI-CHAIN BRIDGE (EVERYDAY TOKENS)</span>
@@ -245,12 +260,19 @@
         </div>
       </div>
 
-      <button style="width: 100%;" onclick="createBridgeDeposit()">GET DEPOSIT ADDRESS / INVOICE</button>
+      <button style="width: 100%;" onclick="createBridgeDeposit()">GENERATE DEPOSIT ADDRESS / QR INVOICE</button>
+      
       <div id="bridgeOrderBox" style="margin-top: 12px; display: none;">
-        <div class="metric-label" style="font-size: 11px;">Send Deposit To:</div>
-        <div class="code-box" id="bridgeDepositHandle">0x...</div>
-        <div style="margin-top: 6px; font-size: 10px; color: var(--accent-green);" id="bridgeOrderStatus">
-          ● Order Created: Awaiting network deposit. Output will credit directly to your stealth address.
+        <div class="qr-container">
+          <div id="qrcodeBox"></div>
+          <div style="margin-top: 10px; width: 100%;">
+            <div class="metric-label" style="font-size: 11px; text-align: center;">Scan with Wallet (MetaMask, Phantom, CashApp, Cake):</div>
+            <div class="code-box" id="bridgeDepositHandle" style="font-size: 11px; text-align: center;">0x...</div>
+            <button class="btn-secondary" style="width: 100%; margin-top: 8px;" id="copyBtn" onclick="copyDepositAddress()">COPY ADDRESS / INVOICE</button>
+          </div>
+        </div>
+        <div style="margin-top: 8px; font-size: 11px; color: var(--accent-green); text-align: center;" id="bridgeOrderStatus">
+          ● Order Active: Output credits directly to your stealth address.
         </div>
       </div>
     </div>
@@ -333,6 +355,8 @@
   </div>
 
   <script>
+    let currentDepositHandle = '';
+
     async function updateBridgeQuote() {
       const select = document.getElementById('bridgeRouteSelect').value;
       const [chain, asset] = select.split(':');
@@ -361,10 +385,34 @@
         });
         const data = await res.json();
         document.getElementById('bridgeOrderBox').style.display = 'block';
+        currentDepositHandle = data.deposit_handle;
         document.getElementById('bridgeDepositHandle').innerText = data.deposit_handle;
         document.getElementById('bridgeOrderStatus').innerText = `● Order #${data.order_id} Active: Expecting ${data.amount} ${data.asset}. Crediting ${data.kpl_received} KPL in ~${data.estimated_seconds}s.`;
+
+        // Render dark-themed QR Code
+        const qrBox = document.getElementById('qrcodeBox');
+        qrBox.innerHTML = '';
+        if (typeof QRCode !== 'undefined') {
+          new QRCode(qrBox, {
+            text: data.deposit_handle,
+            width: 130,
+            height: 130,
+            colorDark: "#00f2fe",
+            colorLight: "#080a0f",
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        }
       } catch (err) {
         alert('Deposit order creation error: ' + err.message);
+      }
+    }
+
+    function copyDepositAddress() {
+      if (currentDepositHandle) {
+        navigator.clipboard.writeText(currentDepositHandle);
+        const btn = document.getElementById('copyBtn');
+        btn.innerText = 'COPIED TO CLIPBOARD!';
+        setTimeout(() => { btn.innerText = 'COPY ADDRESS / INVOICE'; }, 2000);
       }
     }
 
