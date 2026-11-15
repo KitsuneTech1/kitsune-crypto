@@ -1,28 +1,70 @@
 //! Kitsune Private Layer (kpl-cli) - Fast Rust CLI Wallet and Offline Signer.
 
 use std::env;
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::process;
+use std::time::Duration;
 use rand::rngs::OsRng;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::edwards::EdwardsPoint;
 use kpl_core::{
     StealthKeys,
     create_stealth_output,
-    scan_stealth_output,
     PedersenCommitment,
     ClsagSignature,
-    compute_key_image,
     calculate_block_reward,
     ATOMIC_UNITS,
 };
+
+const DEFAULT_NODE: &str = "192.168.1.201:9200";
 
 fn print_help() {
     println!("KITSUNE PRIVATE LAYER (KPL) CLI WALLET v0.1.0");
     println!("Usage:");
     println!("  kpl-cli wallet generate");
+    println!("  kpl-cli status [--node <host:port>]");
     println!("  kpl-cli tx sign <recipient_kpl_addr> <amount_atomic> <fee_atomic>");
+    println!("  kpl-cli tx submit <recipient_kpl_addr> <amount_atomic> <fee_atomic> [--node <host:port>]");
     println!("  kpl-cli tx verify-sample");
     println!("  kpl-cli emission <already_generated_coins>");
+}
+
+fn http_request(node_addr: &str, method: &str, path: &str, body: Option<&str>) -> Result<(u16, String), String> {
+    let clean_addr = node_addr
+        .trim_start_matches("http://")
+        .trim_start_matches("https://");
+
+    let mut stream = TcpStream::connect(clean_addr)
+        .map_err(|e| format!("Failed to connect to {}: {}", clean_addr, e))?;
+    stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(3))).ok();
+
+    let content_len = body.map(|b| b.len()).unwrap_or(0);
+    let req = format!(
+        "{} {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        method, path, clean_addr, content_len, body.unwrap_or("")
+    );
+    stream.write_all(req.as_bytes()).map_err(|e| e.to_string())?;
+
+    let mut resp = String::new();
+    stream.read_to_string(&mut resp).map_err(|e| e.to_string())?;
+
+    let mut status_code = 200;
+    if let Some(status_line) = resp.lines().next() {
+        let parts: Vec<&str> = status_line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            status_code = parts[1].parse().unwrap_or(200);
+        }
+    }
+
+    let body_str = if let Some(idx) = resp.find("\r\n\r\n") {
+        resp[idx + 4..].to_string()
+    } else {
+        resp
+    };
+
+    Ok((status_code, body_str))
 }
 
 fn main() {
@@ -52,6 +94,38 @@ fn main() {
                 print_help();
             }
         }
+        "status" => {
+            let mut node = DEFAULT_NODE;
+            if args.len() >= 4 && args[2] == "--node" {
+                node = &args[3];
+            }
+            println!("Querying KPL validator node: http://{}...", node);
+            match http_request(node, "GET", "/status", None) {
+                Ok((code, body)) => {
+                    if code == 200 {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) {
+                            println!("=== LIVE KPL VALIDATOR NODE STATUS ===");
+                            println!("Node ID:          {}", val["node_id"].as_str().unwrap_or("-"));
+                            println!("Current Height:   #{}", val["height"]);
+                            println!("Latest Hash:      {}", val["latest_hash"].as_str().unwrap_or("-"));
+                            println!("Quorum Threshold: {} / {}", val["quorum_threshold"], val["total_nodes"]);
+                            println!("Mempool Count:    {}", val["mempool_count"]);
+                            println!("Spent Key Images: {}", val["spent_key_images_count"]);
+                            println!("Peer Nodes:       {}", val["peers"]);
+                            println!("=======================================");
+                        } else {
+                            println!("{}", body);
+                        }
+                    } else {
+                        println!("HTTP Error {}: {}", code, body);
+                    }
+                }
+                Err(err) => {
+                    eprintln!("RPC Error: {}", err);
+                    process::exit(1);
+                }
+            }
+        }
         "tx" => {
             if args.len() >= 3 && args[2] == "sign" {
                 if args.len() < 6 {
@@ -66,24 +140,16 @@ fn main() {
                 let sender = StealthKeys::generate(&mut rng);
                 let receiver = StealthKeys::generate(&mut rng);
 
-                // Construct stealth output
-                let (one_time_pub, tx_pub_R) = create_stealth_output(&receiver.view_public, &receiver.spend_public, &mut rng);
-
-                // Construct Pedersen commitment
+                let (one_time_pub, tx_pub_r) = create_stealth_output(&receiver.view_public, &receiver.spend_public, &mut rng);
                 let blind = Scalar::random(&mut rng);
                 let commitment = PedersenCommitment::create(amount, blind);
 
-                // Construct 5-member decoy ring
                 let mut ring = Vec::new();
-                let mut keys = Vec::new();
                 for _ in 0..4 {
-                    let sec = Scalar::random(&mut rng);
-                    ring.push(EdwardsPoint::mul_base(&sec));
-                    keys.push(sec);
+                    ring.push(EdwardsPoint::mul_base(&Scalar::random(&mut rng)));
                 }
                 let real_idx = 2;
                 ring.insert(real_idx, sender.spend_public);
-                keys.insert(real_idx, sender.spend_secret);
 
                 let msg_payload = format!("TX_OUT:{}:AMT:{}:FEE:{}", hex::encode(one_time_pub.compress().as_bytes()), amount, fee);
                 let sig = ClsagSignature::sign(msg_payload.as_bytes(), &ring, real_idx, &sender.spend_secret, &mut rng);
@@ -94,7 +160,7 @@ fn main() {
                     "amount_atomic": amount,
                     "fee_atomic": fee,
                     "stealth_out_P": hex::encode(one_time_pub.compress().as_bytes()),
-                    "tx_pub_R": hex::encode(tx_pub_R.compress().as_bytes()),
+                    "tx_pub_R": hex::encode(tx_pub_r.compress().as_bytes()),
                     "commitment": hex::encode(commitment.point.compress().as_bytes()),
                     "key_image": hex::encode(sig.key_image.compress().as_bytes()),
                     "ring_size": ring.len(),
@@ -104,6 +170,71 @@ fn main() {
                 });
 
                 println!("{}", serde_json::to_string_pretty(&tx_json).unwrap());
+            } else if args.len() >= 3 && args[2] == "submit" {
+                if args.len() < 6 {
+                    println!("Error: tx submit requires <recipient_addr> <amount> <fee> [--node <host:port>]");
+                    process::exit(1);
+                }
+                let recipient = &args[3];
+                let amount: u64 = args[4].parse().unwrap_or(500_000);
+                let fee: u64 = args[5].parse().unwrap_or(50_000);
+                let mut node = DEFAULT_NODE;
+                if args.len() >= 8 && args[6] == "--node" {
+                    node = &args[7];
+                }
+
+                let mut rng = OsRng;
+                let sender = StealthKeys::generate(&mut rng);
+                let receiver = StealthKeys::generate(&mut rng);
+                let (one_time_pub, tx_pub_r) = create_stealth_output(&receiver.view_public, &receiver.spend_public, &mut rng);
+                let blind = Scalar::random(&mut rng);
+                let commitment = PedersenCommitment::create(amount, blind);
+
+                let mut ring = Vec::new();
+                for _ in 0..4 {
+                    ring.push(EdwardsPoint::mul_base(&Scalar::random(&mut rng)));
+                }
+                let real_idx = 2;
+                ring.insert(real_idx, sender.spend_public);
+
+                let msg_payload = format!("TX_OUT:{}:AMT:{}:FEE:{}", hex::encode(one_time_pub.compress().as_bytes()), amount, fee);
+                let sig = ClsagSignature::sign(msg_payload.as_bytes(), &ring, real_idx, &sender.spend_secret, &mut rng);
+
+                let tx_json = serde_json::json!({
+                    "version": 1,
+                    "recipient": recipient,
+                    "amount_atomic": amount,
+                    "fee_atomic": fee,
+                    "stealth_out_P": hex::encode(one_time_pub.compress().as_bytes()),
+                    "tx_pub_R": hex::encode(tx_pub_r.compress().as_bytes()),
+                    "commitment": hex::encode(commitment.point.compress().as_bytes()),
+                    "key_image": hex::encode(sig.key_image.compress().as_bytes()),
+                    "ring_size": ring.len(),
+                    "signature_c0": hex::encode(sig.c0.as_bytes())
+                });
+
+                let payload_str = serde_json::to_string(&tx_json).unwrap();
+                println!("Broadcasting private transaction to http://{}...", node);
+                match http_request(node, "POST", "/submit_tx", Some(&payload_str)) {
+                    Ok((code, body)) => {
+                        if code == 200 {
+                            println!("=== TRANSACTION ACCEPTED INTO MEMPOOL ===");
+                            let res_val: serde_json::Value = serde_json::from_str(&body).unwrap();
+                            println!("Transaction Hash: {}", res_val["tx_hash"].as_str().unwrap_or("-"));
+                            println!("Key Image:        {}", res_val["key_image"].as_str().unwrap_or("-"));
+                            println!("Mempool Size:     {}", res_val["mempool_size"]);
+                            println!("Status:           CONFIRMED (Ready for next BFT block)");
+                            println!("==========================================");
+                        } else {
+                            eprintln!("Submission Rejected (HTTP {}): {}", code, body);
+                            process::exit(1);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("RPC Error: {}", err);
+                        process::exit(1);
+                    }
+                }
             } else if args.len() >= 3 && args[2] == "verify-sample" {
                 let mut rng = OsRng;
                 let sender = StealthKeys::generate(&mut rng);
