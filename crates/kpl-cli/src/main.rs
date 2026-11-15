@@ -1,6 +1,9 @@
 //! Kitsune Private Layer (kpl-cli) - Fast Rust CLI Wallet, Offline Signer, and Bridge Client.
 
 use std::env;
+
+mod mnemonic;
+use mnemonic::{entropy_to_mnemonic, mnemonic_to_seed, seed_to_stealth_keys};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::process;
@@ -24,6 +27,8 @@ fn print_help() {
     println!("KITSUNE PRIVATE LAYER (KPL) CLI WALLET v0.1.0");
     println!("Usage:");
     println!("  kpl-cli wallet generate");
+    println!("  kpl-cli wallet import \"<12_word_mnemonic>\"");
+    println!("  kpl-cli wallet export <private_spend_hex>");
     println!("  kpl-cli status [--node <host:port>]");
     println!("  kpl-cli bridge quote <chain> <asset> <amount> [--server <host:port>]");
     println!("  kpl-cli bridge deposit <chain> <asset> <amount> <kpl_recipient> [--server <host:port>]");
@@ -81,21 +86,54 @@ fn main() {
     match args[1].as_str() {
         "wallet" => {
             if args.len() >= 3 && args[2] == "generate" {
-                let mut rng = OsRng;
-                let keys = StealthKeys::generate(&mut rng);
-                let view_pub_hex = hex::encode(keys.view_public.compress().as_bytes());
-                let spend_pub_hex = hex::encode(keys.spend_public.compress().as_bytes());
-                let addr = format!("kpl_{}{}", view_pub_hex, spend_pub_hex);
+                let mut entropy = [0u8; 16];
+                rand::RngCore::fill_bytes(&mut OsRng, &mut entropy);
+                let phrase = entropy_to_mnemonic(&entropy);
+                let seed = mnemonic_to_seed(&phrase);
+                let (spend_sec, view_sec, spend_pub, view_pub, addr) = seed_to_stealth_keys(&seed);
 
                 println!("=== NEW KPL STEALTH WALLET GENERATED ===");
                 println!("Public Address:    {}", addr);
-                println!("Private View Key:  {}", hex::encode(keys.view_secret.as_bytes()));
-                println!("Public View Key:   {}", view_pub_hex);
-                println!("Private Spend Key: {}", hex::encode(keys.spend_secret.as_bytes()));
-                println!("Public Spend Key:  {}", spend_pub_hex);
+                println!("Mnemonic Phrase:   \"{}\"", phrase);
+                println!("Private View Key:  {}", hex::encode(view_sec.as_bytes()));
+                println!("Public View Key:   {}", hex::encode(view_pub.compress().as_bytes()));
+                println!("Private Spend Key: {}", hex::encode(spend_sec.as_bytes()));
+                println!("Public Spend Key:  {}", hex::encode(spend_pub.compress().as_bytes()));
                 println!("=========================================");
+                println!("NOTE: Write down your 12-word mnemonic phrase. It deterministically recovers your wallet.");
+            } else if args.len() >= 4 && args[2] == "import" {
+                let phrase = args[3..].join(" ");
+                let seed = mnemonic_to_seed(&phrase);
+                let (spend_sec, view_sec, spend_pub, view_pub, addr) = seed_to_stealth_keys(&seed);
+
+                println!("=== RECOVERED KPL STEALTH WALLET ===");
+                println!("Recovered Address: {}", addr);
+                println!("Private View Key:  {}", hex::encode(view_sec.as_bytes()));
+                println!("Public View Key:   {}", hex::encode(view_pub.compress().as_bytes()));
+                println!("Private Spend Key: {}", hex::encode(spend_sec.as_bytes()));
+                println!("Public Spend Key:  {}", hex::encode(spend_pub.compress().as_bytes()));
+                println!("=====================================");
+            } else if args.len() >= 4 && args[2] == "export" {
+                let spend_hex = &args[3];
+                if let Ok(bytes) = hex::decode(spend_hex) {
+                    if bytes.len() >= 16 {
+                        let mut entropy = [0u8; 16];
+                        entropy.copy_from_slice(&bytes[..16]);
+                        let phrase = entropy_to_mnemonic(&entropy);
+                        println!("=== WALLET RECOVERY PHRASE ===");
+                        println!("Mnemonic: \"{}\"", phrase);
+                        println!("==============================");
+                    } else {
+                        eprintln!("Invalid spend key length (expected 32 bytes hex)");
+                    }
+                } else {
+                    eprintln!("Invalid hex string");
+                }
             } else {
-                print_help();
+                println!("Usage:");
+                println!("  kpl-cli wallet generate");
+                println!("  kpl-cli wallet import \"<word1> <word2> ... <word12>\"");
+                println!("  kpl-cli wallet export <private_spend_key>");
             }
         }
         "status" => {

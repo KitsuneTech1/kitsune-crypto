@@ -13,7 +13,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 
 class SupportedChain(str, Enum):
@@ -62,6 +62,22 @@ class BridgeOrder:
     preimage: Optional[str] = None
 
 
+@dataclass
+class OutboundWithdrawal:
+    withdrawal_id: str
+    target_chain: SupportedChain
+    asset: AssetType
+    kpl_burn_amount: float
+    payout_amount: float
+    destination_address: str
+    burn_tx_hash: str
+    key_image: str
+    status: str  # SETTLED, FAILED
+    created_at: float
+    payout_tx_hash: Optional[str] = None
+    completed_at: Optional[float] = None
+
+
 class FastBridgeGateway:
     """Multi-chain liquidity bridge router for rapid everyday on/off-ramping."""
 
@@ -87,6 +103,8 @@ class FastBridgeGateway:
 
     def __init__(self):
         self.orders: Dict[str, BridgeOrder] = {}
+        self.withdrawals: Dict[str, OutboundWithdrawal] = {}
+        self.spent_burn_key_images: Set[str] = set()
         self.bridge_vaults = {
             SupportedChain.BASE: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
             SupportedChain.ARBITRUM: "0x985223cCc436C0532925a3b844Bc454e4438f12a",
@@ -171,7 +189,66 @@ class FastBridgeGateway:
         order.kpl_tx_hash = hashlib.sha256(f"KPL_MINT_LN:{order_id}:{calc_hash}".encode()).hexdigest()
         return order
 
-    def confirm_inbound_deposit(self, order_id: str, external_tx_hash: str) -> BridgeOrder:
+    def get_outbound_quote(self, chain: SupportedChain, asset: AssetType, kpl_amount: float) -> dict:
+        if kpl_amount <= 0:
+            raise ValueError("KPL burn amount must be greater than zero")
+        kpl_usd = kpl_amount * self.KPL_REFERENCE_USD
+        fee_usd = max(kpl_usd * 0.0020, 0.50)  # 0.20% fee, min $0.50
+        net_usd = max(kpl_usd - fee_usd, 0.0)
+        asset_rate = self.ASSET_RATES.get(asset, 1.0)
+        payout_units = net_usd / asset_rate
+        return {
+            "target_chain": chain.value,
+            "asset": asset.value,
+            "kpl_burn_amount": kpl_amount,
+            "payout_amount": round(payout_units, 6),
+            "fee_kpl": round(fee_usd / self.KPL_REFERENCE_USD, 6),
+            "estimated_seconds": self.CHAIN_SPEEDS.get(chain, 5),
+            "exchange_rate": round(self.KPL_REFERENCE_USD / asset_rate, 6),
+        }
+
+    def process_outbound_withdrawal(
+        self, chain: SupportedChain, asset: AssetType, kpl_amount: float,
+        destination_address: str, burn_tx_hash: str, key_image: str
+    ) -> OutboundWithdrawal:
+        if not burn_tx_hash or len(burn_tx_hash) < 32:
+            raise ValueError("Invalid KPL burn transaction hash")
+        if not key_image or len(key_image) < 32:
+            raise ValueError("Invalid burn key image")
+        if key_image in self.spent_burn_key_images:
+            raise RuntimeError(f"Double-redeem detected! Key image {key_image} already spent in prior withdrawal")
+
+        self.spent_burn_key_images.add(key_image)
+        quote = self.get_outbound_quote(chain, asset, kpl_amount)
+        wid = hashlib.sha256(f"OUT:{chain}:{asset}:{kpl_amount}:{destination_address}:{time.time()}".encode()).hexdigest()[:16]
+
+        if chain in (SupportedChain.BASE, SupportedChain.ARBITRUM, SupportedChain.ETHEREUM):
+            payout_tx = "0x" + hashlib.sha256(f"EVM_RELEASE:{wid}:{destination_address}:{quote['payout_amount']}".encode()).hexdigest()
+        elif chain == SupportedChain.SOLANA:
+            payout_tx = hashlib.sha256(f"SOL_RELEASE:{wid}:{destination_address}:{quote['payout_amount']}".encode()).hexdigest() + "5k1"
+        elif chain == SupportedChain.LIGHTNING:
+            payout_tx = f"ln_payout_{hashlib.sha256(wid.encode()).hexdigest()[:24]}"
+        else:
+            payout_tx = hashlib.sha256(f"XMR_RELEASE:{wid}".encode()).hexdigest()
+
+        withdrawal = OutboundWithdrawal(
+            withdrawal_id=wid,
+            target_chain=chain,
+            asset=asset,
+            kpl_burn_amount=kpl_amount,
+            payout_amount=quote["payout_amount"],
+            destination_address=destination_address,
+            burn_tx_hash=burn_tx_hash,
+            key_image=key_image,
+            status="SETTLED",
+            created_at=time.time(),
+            payout_tx_hash=payout_tx,
+            completed_at=time.time(),
+        )
+        self.withdrawals[wid] = withdrawal
+        return withdrawal
+
+def confirm_inbound_deposit(self, order_id: str, external_tx_hash: str) -> BridgeOrder:
         if order_id not in self.orders:
             raise KeyError(f"Order {order_id} not found")
 
