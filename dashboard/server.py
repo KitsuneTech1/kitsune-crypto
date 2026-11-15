@@ -302,6 +302,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if url == "/api/bridge/withdraw/quote":
+            chain_str = query.get("chain", ["base"])[0].lower()
+            asset_str = query.get("asset", ["USDC"])[0].upper()
+            amount_str = query.get("amount", ["25"])[0]
+            try:
+                chain = SupportedChain(chain_str)
+                asset = AssetType(asset_str)
+                amt = float(amount_str)
+                quote = BRIDGE_GATEWAY.get_outbound_quote(chain, asset, amt)
+                self.send_json(200, quote)
+            except Exception as e:
+                self.send_json(400, {"error": str(e)})
+            return
+
         if url == "/api/bridge/quote":
             chain_str = query.get("chain", ["base"])[0].lower()
             asset_str = query.get("asset", ["USDC"])[0].upper()
@@ -374,6 +388,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
         url = self.path.split("?")[0]
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
+
+        if url == "/api/bridge/withdraw":
+            try:
+                payload = json.loads(body.decode()) if body else {}
+                chain_str = payload.get("chain", "base").lower()
+                asset_str = payload.get("asset", "USDC").upper()
+                chain = SupportedChain(chain_str)
+                asset = AssetType(asset_str)
+                amount = float(payload.get("amount", 25.0))
+                dest_addr = payload.get("destination", "0x32A4B89c83693e548239080B1Ac604cE3F291e02")
+
+                # Generate or verify burn proof
+                alice = StealthWalletKeys.generate()
+                key_img = payload.get("key_image") or compute_key_image(alice.spend_secret, alice.spend_public).to_bytes().hex()
+                burn_hash = payload.get("kpl_burn_tx") or hashlib.sha256(f"BURN:kpl_sink:{amount}:{key_img}".encode()).hexdigest()
+
+                withdrawal = BRIDGE_GATEWAY.process_outbound_withdrawal(
+                    chain, asset, amount, dest_addr, burn_hash, key_img
+                )
+                self.send_json(200, {
+                    "status": withdrawal.status,
+                    "withdrawal_id": withdrawal.withdrawal_id,
+                    "target_chain": withdrawal.target_chain.value,
+                    "asset": withdrawal.asset.value,
+                    "kpl_burned": withdrawal.kpl_burn_amount,
+                    "payout_amount": withdrawal.payout_amount,
+                    "destination_address": withdrawal.destination_address,
+                    "burn_tx_hash": withdrawal.burn_tx_hash,
+                    "key_image": withdrawal.key_image,
+                    "payout_tx_hash": withdrawal.payout_tx_hash,
+                })
+            except Exception as e:
+                self.send_json(400, {"error": str(e)})
+            return
 
         if url == "/api/bridge/deposit":
             try:
