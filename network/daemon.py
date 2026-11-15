@@ -99,7 +99,7 @@ class DaemonState:
         sig_payload = f"VOTE:{proposal.hash()}:{self.node_id}"
         return hashlib.sha256(sig_payload.encode("utf8")).hexdigest()
 
-    def commit_block(self, block: BlockHeader, qc: QuorumCertificate) -> bool:
+    def commit_block(self, block: BlockHeader, qc: QuorumCertificate, block_txs: Optional[List[dict]] = None) -> bool:
         with self.lock:
             if block.height != self.chain[-1].height + 1:
                 return False
@@ -110,14 +110,16 @@ class DaemonState:
             block.quorum_cert = qc
             self.chain.append(block)
 
-            # Move mempool txs to recent_txs as CONFIRMED
-            for tx in self.mempool:
+            # Move mempool and block_txs to recent_txs as CONFIRMED
+            to_confirm = list(block_txs) if block_txs is not None else list(self.mempool)
+            for tx in to_confirm:
                 tx_record = dict(tx)
                 tx_record["status"] = "CONFIRMED"
                 tx_record["block_height"] = block.height
                 tx_record["confirmed_at"] = time.time()
-                self.recent_txs.insert(0, tx_record)
-            self.recent_txs = self.recent_txs[:30]
+                if not any(r.get("tx_hash") == tx_record.get("tx_hash") for r in self.recent_txs):
+                    self.recent_txs.insert(0, tx_record)
+            self.recent_txs = self.recent_txs[:50]
             self.mempool.clear()
 
             logger.info("Committed block #%d [hash=%s] with %d/%d QC signatures", block.height, block.hash()[:12], len(qc.signatures), self.total_nodes)
@@ -273,6 +275,8 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
 
         elif self.path == "/gossip_tx":
             tx_data = payload.get("tx", payload)
+            if not tx_data.get("tx_hash"):
+                tx_data["tx_hash"] = hashlib.sha256(json.dumps(tx_data, sort_keys=True).encode()).hexdigest()
             key_image = tx_data.get("key_image", "")
             tx_data["status"] = "PENDING"
             with GLOBAL_STATE.lock:
@@ -282,7 +286,7 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"status": "gossiped"}).encode("utf8"))
+            self.wfile.write(json.dumps({"status": "gossiped", "tx_hash": tx_data.get("tx_hash")}).encode("utf8"))
 
         elif self.path == "/propose":
             block = BlockHeader(
@@ -308,6 +312,7 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
         elif self.path == "/commit":
             block_data = payload["block"]
             qc_data = payload["qc"]
+            block_txs = payload.get("txs", None)
             block = BlockHeader(
                 height=block_data["height"],
                 prev_hash=block_data["prev_hash"],
@@ -321,7 +326,7 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
                 height=qc_data["height"],
                 signatures=qc_data["signatures"],
             )
-            success = GLOBAL_STATE.commit_block(block, qc)
+            success = GLOBAL_STATE.commit_block(block, qc, block_txs=block_txs)
             if success:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -397,6 +402,7 @@ def consensus_worker_loop(state: DaemonState):
                     qc = QuorumCertificate(block_hash=proposal.hash(), height=next_h, signatures=votes)
                     state.commit_block(proposal, qc)
 
+                    committed_txs = [tx for tx in state.recent_txs if tx.get("block_height") == proposal.height]
                     commit_payload = json.dumps({
                         "block": {
                             "height": proposal.height,
@@ -411,6 +417,7 @@ def consensus_worker_loop(state: DaemonState):
                             "height": qc.height,
                             "signatures": qc.signatures,
                         },
+                        "txs": committed_txs,
                     }).encode("utf8")
 
                     for peer in state.peers:

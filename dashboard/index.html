@@ -651,6 +651,28 @@
       }
     }
 
+    function initEventStream() {
+      if (!window.EventSource) return;
+      const sse = new EventSource('/api/events/stream');
+      sse.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.height) {
+            const hElem = document.getElementById('liveClusterHeight');
+            if (hElem) hElem.innerText = 'Block #' + data.height.toLocaleString();
+            const hashElem = document.getElementById('liveLatestHash');
+            if (hashElem && data.latest_hash) hashElem.innerText = data.latest_hash.slice(0, 24) + '...';
+            if (data.is_new_block && hElem) {
+              hElem.style.color = '#39ff14';
+              setTimeout(() => { hElem.style.color = 'var(--accent-cyan)'; }, 500);
+              fetchMempool();
+            }
+          }
+        } catch (e) {}
+      };
+    }
+
+    initEventStream();
     updateBridgeQuote();
     fetchCluster();
     fetchMempool();
