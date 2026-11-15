@@ -1,0 +1,15 @@
+[package]
+name = "kpl-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["Moo <founder@kitsunetechnologies.org>"]
+description = "Kitsune Private Layer - Fast Rust CLI Wallet and Offline Transaction Signer"
+
+[dependencies]
+kpl-core = { path = "../kpl-core" }
+curve25519-dalek = { version = "4", features = ["rand_core", "serde"] }
+sha2 = "0.10"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4"

@@ -1,0 +1,11 @@
+C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-core\target\debug\deps\zeroize-8f243f0e28700f1f.d: C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\lib.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\x86.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\barrier.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\stack.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\../README.md
+
+C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-core\target\debug\deps\libzeroize-8f243f0e28700f1f.rlib: C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\lib.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\x86.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\barrier.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\stack.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\../README.md
+
+C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-core\target\debug\deps\libzeroize-8f243f0e28700f1f.rmeta: C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\lib.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\x86.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\barrier.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\stack.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\../README.md
+
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\lib.rs:
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\x86.rs:
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\barrier.rs:
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\stack.rs:
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zeroize-1.9.1\src\../README.md:

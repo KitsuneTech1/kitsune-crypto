@@ -1,0 +1,14 @@
+C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-cli\target\release\deps\serde-af3a01f69f539f58.d: C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-cli\target\release\build\serde-009d67ca170ca123\out/private.rs
+
+C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-cli\target\release\deps\libserde-af3a01f69f539f58.rlib: C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-cli\target\release\build\serde-009d67ca170ca123\out/private.rs
+
+C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-cli\target\release\deps\libserde-af3a01f69f539f58.rmeta: C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-cli\target\release\build\serde-009d67ca170ca123\out/private.rs
+
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs:
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs:
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs:
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs:
+C:\Users\Owner\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs:
+C:\Users\Owner\projects\Kitsune\kitsune-crypto\crates\kpl-cli\target\release\build\serde-009d67ca170ca123\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\Owner\\projects\\Kitsune\\kitsune-crypto\\crates\\kpl-cli\\target\\release\\build\\serde-009d67ca170ca123\\out
