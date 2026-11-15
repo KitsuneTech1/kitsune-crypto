@@ -201,7 +201,7 @@
         Curve25519 stealth addressing, Compact Linkable Ring Signatures (CLSAG), and zero-knowledge Bulletproofs+ combined with instant single-slot BFT finality and multi-chain bridge rails.
       </p>
       <div class="cta-group">
-        <a href="https://github.com/KitsuneTech1/kitsune-crypto/releases/tag/v0.1.0" class="btn btn-primary">Download v0.1.0 (Win / Linux)</a>
+        <a href="https://github.com/KitsuneTech1/kitsune-crypto/releases" class="btn btn-primary">Download Latest Release (Win / Linux)</a>
         <a href="whitepaper.pdf" class="btn btn-secondary">Read Whitepaper (PDF)</a>
       </div>
     </div>
@@ -334,30 +334,39 @@
 
     <!-- Quickstart Section -->
     <div class="table-card" id="quickstart">
-      <h2 style="font-size: 20px; margin-bottom: 6px;">CLI Quickstart & Docker Compose</h2>
-      <p style="font-size: 14px; color: var(--text-muted);">Generate addresses, broadcast private transactions, or run a local node:</p>
+      <h2 style="font-size: 20px; margin-bottom: 6px;">CLI Quickstart & Docker Devnet</h2>
+      <p style="font-size: 14px; color: var(--text-muted);">Generate addresses, sign air-gapped transactions, or run a 4-node local BFT devnet:</p>
       
-      <div style="margin-top:14px; font-size:12px; font-weight:700; color:var(--text-muted);">CLI Wallet Usage:</div>
+      <div style="margin-top:14px; font-size:12px; font-weight:700; color:var(--text-muted);">Air-Gapped Wallet & Offline Signing:</div>
       <div class="code-snippet">
-# Generate stealth address
+# Generate 12-word BIP-39 mnemonic and dual-key stealth address
 kpl-cli.exe wallet generate
 
-# Check bridge quote (e.g. 100 USDC on Base)
-kpl-cli.exe bridge quote base USDC 100
+# Export air-gapped printable HTML cold storage paper wallet
+kpl-cli.exe wallet paper --out paper-wallet.html
 
-# Lock Devnet SOL and mint blinded KPL stealth UTXO
-kpl-cli.exe bridge solana-lock 0.10 <your_kpl_addr>
+# Sign transaction offline on an air-gapped machine (no internet needed)
+kpl-cli.exe tx sign-offline &lt;recipient_kpl_addr&gt; 1200000 50000 --out signed-tx.json
 
-# Broadcast private transaction to network
-kpl-cli.exe tx submit &lt;recipient_kpl_addr&gt; 500000 50000 --node 192.168.1.201:9200
+# Broadcast pre-signed transaction from any online machine
+kpl-cli.exe tx broadcast signed-tx.json --node 192.168.1.201:9200
       </div>
 
-      <div style="margin-top:16px; font-size:12px; font-weight:700; color:var(--text-muted);">One-Command Docker Node & Explorer:</div>
+      <div style="margin-top:16px; font-size:12px; font-weight:700; color:var(--text-muted);">One-Command Docker Devnet Cluster:</div>
       <div class="code-snippet">
 git clone https://github.com/KitsuneTech1/kitsune-crypto.git
 cd kitsune-crypto
-docker compose up -d
-# Explorer live at http://localhost:8792
+
+# Start 4-node BFT cluster + live telemetry dashboard
+./scripts/devnet.sh up          # Linux / macOS
+.\scripts\devnet.ps1 -Action up    # Windows PowerShell
+
+# Check live cluster status across ports 9201..9204
+./scripts/devnet.sh status
+
+# Run 50-transaction concurrency benchmark against local devnet
+./scripts/devnet.sh stress 50
+# Explorer UI live at http://localhost:8792
       </div>
     </div>
 

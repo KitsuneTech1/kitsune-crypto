@@ -16,10 +16,16 @@ jobs:
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - name: Run kpl-core Invariant Tests
         run: cargo test --verbose
         working-directory: crates/kpl-core
+
+      - name: Run kpl-cli Unit Tests
+        run: cargo test --verbose
+        working-directory: crates/kpl-cli
 
       - name: Build kpl-cli Release Binary
         run: cargo build --release --verbose
@@ -39,3 +45,24 @@ jobs:
 
       - name: Run Formal Cryptographic Invariants
         run: python -m verifier.invariants
+
+      - name: Run Multi-Sig Relayer Quorum Tests
+        run: python -m core.relayer_quorum_test
+
+      - name: Run Outbound Bridge Unit Tests
+        run: python -m core.outbound_bridge_test
+
+  adversarial-fuzzing:
+    name: Adversarial Invariant Fuzzing (155 Hostile Trials)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run 155 Adversarial Mutation Trials
+        run: python verifier/fuzzer.py

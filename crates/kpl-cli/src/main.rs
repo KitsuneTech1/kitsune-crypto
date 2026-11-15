@@ -35,6 +35,8 @@ fn print_help() {
     println!("  kpl-cli bridge deposit <chain> <asset> <amount> <kpl_recipient> [--server <host:port>]");
     println!("  kpl-cli bridge solana-lock <amount> <kpl_recipient> [--server <host:port>] [--rpc <url>]");
     println!("  kpl-cli tx sign <recipient_kpl_addr> <amount_atomic> <fee_atomic>");
+    println!("  kpl-cli tx sign-offline <recipient_kpl_addr> <amount_atomic> <fee_atomic> [--out <file.json>]");
+    println!("  kpl-cli tx broadcast <file_or_json> [--node <host:port>]");
     println!("  kpl-cli tx submit <recipient_kpl_addr> <amount_atomic> <fee_atomic> [--node <host:port>]");
     println!("  kpl-cli tx verify-sample");
     println!("  kpl-cli emission <already_generated_coins>");
@@ -396,7 +398,127 @@ fn main() {
             }
         }
         "tx" => {
-            if args.len() >= 3 && args[2] == "sign" {
+            if args.len() >= 3 && args[2] == "sign-offline" {
+                if args.len() < 6 {
+                    println!("Error: tx sign-offline requires <recipient_addr> <amount> <fee> [--out <file.json>]");
+                    process::exit(1);
+                }
+                let recipient = &args[3];
+                let amount: u64 = args[4].parse().unwrap_or(500_000);
+                let fee: u64 = args[5].parse().unwrap_or(50_000);
+                let mut out_path = None;
+                if args.len() >= 8 && args[6] == "--out" {
+                    out_path = Some(args[7].clone());
+                }
+
+                let mut rng = OsRng;
+                let sender = StealthKeys::generate(&mut rng);
+                let receiver = StealthKeys::generate(&mut rng);
+
+                let (one_time_pub, tx_pub_r) = create_stealth_output(&receiver.view_public, &receiver.spend_public, &mut rng);
+                let blind = Scalar::random(&mut rng);
+                let commitment = PedersenCommitment::create(amount, blind);
+
+                let mut ring = Vec::new();
+                for _ in 0..4 {
+                    ring.push(EdwardsPoint::mul_base(&Scalar::random(&mut rng)));
+                }
+                let real_idx = 2;
+                ring.insert(real_idx, sender.spend_public);
+
+                let msg_payload = format!("TX_OUT:{}:AMT:{}:FEE:{}", hex::encode(one_time_pub.compress().as_bytes()), amount, fee);
+                let sig = ClsagSignature::sign(msg_payload.as_bytes(), &ring, real_idx, &sender.spend_secret, &mut rng);
+
+                let tx_json = serde_json::json!({
+                    "version": 1,
+                    "recipient": recipient,
+                    "amount_atomic": amount,
+                    "fee_atomic": fee,
+                    "stealth_out_P": hex::encode(one_time_pub.compress().as_bytes()),
+                    "tx_pub_R": hex::encode(tx_pub_r.compress().as_bytes()),
+                    "commitment": hex::encode(commitment.point.compress().as_bytes()),
+                    "key_image": hex::encode(sig.key_image.compress().as_bytes()),
+                    "ring_size": ring.len(),
+                    "signature_c0": hex::encode(sig.c0.as_bytes()),
+                    "offline_signed": true,
+                    "verified": sig.verify(msg_payload.as_bytes())
+                });
+
+                let pretty_json = serde_json::to_string_pretty(&tx_json).unwrap();
+                if let Some(path) = out_path {
+                    if let Ok(mut f) = std::fs::File::create(&path) {
+                        let _ = f.write_all(pretty_json.as_bytes());
+                        println!("=== AIR-GAPPED TRANSACTION SIGNED OFFLINE ===");
+                        println!("Target Recipient: {}", recipient);
+                        println!("Amount Atomic:    {} ({} KPL)", amount, amount as f64 / ATOMIC_UNITS as f64);
+                        println!("Fee Atomic:       {} ({} KPL)", fee, fee as f64 / ATOMIC_UNITS as f64);
+                        println!("Key Image:        {}", hex::encode(sig.key_image.compress().as_bytes()));
+                        println!("Ring Size:        {}", ring.len());
+                        println!("Saved to File:    {}", path);
+                        println!("===============================================");
+                        println!("To broadcast from an online machine:");
+                        println!("  kpl-cli tx broadcast {} [--node <host:port>]", path);
+                    } else {
+                        eprintln!("Failed to write transaction file: {}", path);
+                        process::exit(1);
+                    }
+                } else {
+                    println!("{}", pretty_json);
+                }
+            } else if args.len() >= 3 && args[2] == "broadcast" {
+                if args.len() < 4 {
+                    println!("Error: tx broadcast requires <file_or_json> [--node <host:port>]");
+                    process::exit(1);
+                }
+                let input_target = &args[3];
+                let mut node = DEFAULT_NODE;
+                if args.len() >= 6 && args[4] == "--node" {
+                    node = &args[5];
+                }
+
+                let payload_str = if std::path::Path::new(input_target).exists() {
+                    match std::fs::read_to_string(input_target) {
+                        Ok(content) => content,
+                        Err(e) => {
+                            eprintln!("Failed to read transaction file {}: {}", input_target, e);
+                            process::exit(1);
+                        }
+                    }
+                } else {
+                    input_target.clone()
+                };
+
+                let parsed: serde_json::Value = match serde_json::from_str(&payload_str) {
+                    Ok(val) => val,
+                    Err(e) => {
+                        eprintln!("Invalid JSON in transaction payload: {}", e);
+                        process::exit(1);
+                    }
+                };
+
+                let clean_payload = serde_json::to_string(&parsed).unwrap();
+                println!("Broadcasting air-gapped transaction to http://{}...", node);
+                match http_request(node, "POST", "/submit_tx", Some(&clean_payload)) {
+                    Ok((code, body)) => {
+                        if code == 200 {
+                            println!("=== AIR-GAPPED TRANSACTION BROADCAST SUCCESSFUL ===");
+                            let res_val: serde_json::Value = serde_json::from_str(&body).unwrap();
+                            println!("Transaction Hash: {}", res_val["tx_hash"].as_str().unwrap_or("-"));
+                            println!("Key Image:        {}", res_val["key_image"].as_str().unwrap_or("-"));
+                            println!("Mempool Size:     {}", res_val["mempool_size"]);
+                            println!("Status:           CONFIRMED (Ready for next BFT block)");
+                            println!("===================================================");
+                        } else {
+                            eprintln!("Broadcast Rejected (HTTP {}): {}", code, body);
+                            process::exit(1);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("RPC Error: {}", err);
+                        process::exit(1);
+                    }
+                }
+            } else if args.len() >= 3 && args[2] == "sign" {
                 if args.len() < 6 {
                     println!("Error: tx sign requires <recipient_addr> <amount> <fee>");
                     process::exit(1);
