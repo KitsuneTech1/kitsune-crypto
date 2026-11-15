@@ -1,0 +1,41 @@
+name: KPL Formal Verification & Engine CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  rust-core-and-cli:
+    name: Rust Dalek Core & CLI Wallet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run kpl-core Invariant Tests
+        run: cargo test --verbose
+        working-directory: crates/kpl-core
+
+      - name: Build kpl-cli Release Binary
+        run: cargo build --release --verbose
+        working-directory: crates/kpl-cli
+
+  python-theorems:
+    name: Mechanized Invariant Proofs (7/7)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run Formal Cryptographic Invariants
+        run: python -m verifier.invariants

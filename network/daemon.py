@@ -46,6 +46,7 @@ class DaemonState:
         self.ledger = LedgerState()
         self.chain: List[BlockHeader] = []
         self.mempool: List[dict] = []
+        self.recent_txs: List[dict] = []
         self.spent_key_images: Set[str] = set()
         self.lock = threading.Lock()
 
@@ -76,7 +77,6 @@ class DaemonState:
         with self.lock:
             height = self.chain[-1].height + 1
             prev_hash = self.chain[-1].hash()
-            # Include pending transactions
             tx_hashes = [tx.get("tx_hash", "tx") for tx in self.mempool]
         reward = calculate_block_reward(height * 600_000)
         merkle_payload = f"merkle_h{height}_{','.join(tx_hashes)}_{time.time()}"
@@ -109,8 +109,17 @@ class DaemonState:
                 return False
             block.quorum_cert = qc
             self.chain.append(block)
-            # Clear processed mempool
+
+            # Move mempool txs to recent_txs as CONFIRMED
+            for tx in self.mempool:
+                tx_record = dict(tx)
+                tx_record["status"] = "CONFIRMED"
+                tx_record["block_height"] = block.height
+                tx_record["confirmed_at"] = time.time()
+                self.recent_txs.insert(0, tx_record)
+            self.recent_txs = self.recent_txs[:30]
             self.mempool.clear()
+
             logger.info("Committed block #%d [hash=%s] with %d/%d QC signatures", block.height, block.hash()[:12], len(qc.signatures), self.total_nodes)
             return True
 
@@ -200,11 +209,14 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(chain_dump).encode("utf8"))
         elif self.path == "/mempool":
             with GLOBAL_STATE.lock:
-                mempool_copy = list(GLOBAL_STATE.mempool)
+                data = {
+                    "pending": list(GLOBAL_STATE.mempool),
+                    "recent_confirmed": list(GLOBAL_STATE.recent_txs),
+                }
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps(mempool_copy).encode("utf8"))
+            self.wfile.write(json.dumps(data).encode("utf8"))
         else:
             self.send_response(404)
             self.end_headers()
@@ -220,6 +232,8 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
             key_image = tx_data.get("key_image", "")
             tx_hash = hashlib.sha256(json.dumps(tx_data, sort_keys=True).encode()).hexdigest()
             tx_data["tx_hash"] = tx_hash
+            tx_data["received_at"] = time.time()
+            tx_data["status"] = "PENDING"
 
             with GLOBAL_STATE.lock:
                 if key_image and key_image in GLOBAL_STATE.spent_key_images:
@@ -240,7 +254,6 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
                 GLOBAL_STATE.mempool.append(tx_data)
                 logger.info("Accepted transaction %s into mempool (key_image=%s)", tx_hash[:12], key_image[:12])
 
-            # Gossip tx to peers
             for peer in GLOBAL_STATE.peers:
                 try:
                     p_req = urllib.request.Request(f"http://{peer}/gossip_tx", data=body, headers={"Content-Type": "application/json"}, method="POST")
@@ -261,6 +274,7 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
         elif self.path == "/gossip_tx":
             tx_data = payload.get("tx", payload)
             key_image = tx_data.get("key_image", "")
+            tx_data["status"] = "PENDING"
             with GLOBAL_STATE.lock:
                 if key_image and key_image not in GLOBAL_STATE.spent_key_images:
                     GLOBAL_STATE.spent_key_images.add(key_image)
@@ -352,7 +366,6 @@ def consensus_worker_loop(state: DaemonState):
             leader_index = next_h % state.total_nodes
 
             if state.node_index == leader_index:
-                logger.info("Node %s is leader for height #%d. Proposing block...", state.node_id, next_h)
                 proposal = state.propose_next_block()
 
                 local_sig = state.validate_and_vote(proposal)
@@ -379,8 +392,6 @@ def consensus_worker_loop(state: DaemonState):
                                 votes[res_data["validator"]] = res_data["signature"]
                     except Exception as e:
                         logger.debug("Failed to get vote from peer %s: %s", peer, e)
-
-                logger.info("Collected %d/%d votes for height #%d", len(votes), state.quorum_threshold, next_h)
 
                 if len(votes) >= state.quorum_threshold:
                     qc = QuorumCertificate(block_hash=proposal.hash(), height=next_h, signatures=votes)
@@ -410,8 +421,6 @@ def consensus_worker_loop(state: DaemonState):
                                 pass
                         except Exception as e:
                             logger.debug("Failed commit broadcast to peer %s: %s", peer, e)
-                else:
-                    logger.warning("Quorum not reached for height #%d (got %d, need %d)", next_h, len(votes), state.quorum_threshold)
 
             time.sleep(3.5)
         except Exception as e:

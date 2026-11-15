@@ -1,5 +1,5 @@
 """Lightweight dashboard and invariant telemetry server for Kitsune Private Layer.
-Streams live cluster telemetry from Proxmox PVE2 validator nodes (CT 401..404).
+Streams live cluster telemetry and mempool transactions from Proxmox PVE2 validator nodes (CT 401..404).
 """
 from __future__ import annotations
 
@@ -141,6 +141,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if url == "/api/cluster":
             cluster = query_cluster_telemetry()
             self.send_json(200, cluster)
+            return
+
+        if url == "/api/mempool":
+            mempool_data = {"pending": [], "recent_confirmed": []}
+            for _, addr in CLUSTER_NODES:
+                try:
+                    req = urllib.request.Request(f"http://{addr}/mempool", headers={"User-Agent": "KPL-Dashboard"})
+                    with urllib.request.urlopen(req, timeout=1.0) as resp:
+                        mempool_data = json.loads(resp.read().decode())
+                        break
+                except Exception:
+                    pass
+            self.send_json(200, mempool_data)
             return
 
         if url == "/api/wallet/generate":
