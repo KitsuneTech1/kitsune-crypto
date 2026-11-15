@@ -211,6 +211,7 @@
       </div>
     </div>
     <div class="chips">
+      <div id="sseStatusChip" class="chip">● SSE: CONNECTING...</div>
       <div class="chip">● INVARIANTS: 7/7 PROVEN</div>
       <div class="chip" style="background: rgba(0, 242, 254, 0.1); color: var(--accent-cyan); border-color: rgba(0, 242, 254, 0.3);">● PVE2 MESH: 4/4 ACTIVE</div>
       <div class="chip" style="background: rgba(157, 78, 221, 0.1); color: var(--accent-purple); border-color: rgba(157, 78, 221, 0.3);">● BRIDGES: BASE · SOL · LN · XMR</div>
@@ -867,10 +868,26 @@
 
     function initEventStream() {
       if (!window.EventSource) return;
+      const sseChip = document.getElementById('sseStatusChip');
       const sse = new EventSource('/api/events/stream');
+
+      sse.onopen = () => {
+        if (sseChip) {
+          sseChip.style.color = 'var(--accent-green)';
+          sseChip.style.borderColor = 'rgba(0, 245, 160, 0.3)';
+          sseChip.style.background = 'rgba(0, 245, 160, 0.1)';
+          sseChip.innerHTML = '<span id="ssePulseDot">●</span> SSE: LIVE STREAM';
+        }
+      };
+
       sse.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          const dot = document.getElementById('ssePulseDot');
+          if (dot) {
+            dot.style.opacity = '0.2';
+            setTimeout(() => { dot.style.opacity = '1'; }, 200);
+          }
           if (data.height) {
             const hElem = document.getElementById('liveClusterHeight');
             if (hElem) hElem.innerText = 'Block #' + data.height.toLocaleString();
@@ -882,7 +899,35 @@
               fetchMempool();
             }
           }
+          if (data.nodes && data.nodes.length) {
+            const container = document.getElementById('nodeGridContainer');
+            if (container) {
+              container.innerHTML = '';
+              data.nodes.forEach(n => {
+                const div = document.createElement('div');
+                div.className = 'node-box ' + (n.status === 'ONLINE' ? 'node-online' : 'node-offline');
+                div.innerHTML = `
+                  <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <strong>${n.id}</strong>
+                    <span style="color:${n.status === 'ONLINE' ? 'var(--accent-green)' : 'var(--accent-red)'}">● ${n.status}</span>
+                  </div>
+                  <div style="color:var(--text-muted); font-size:10px;">${n.addr}</div>
+                  <div style="margin-top:4px;">H: <strong>#${n.height}</strong> <span style="color:var(--text-muted); font-size:9px;">[${n.hash}]</span></div>
+                `;
+                container.appendChild(div);
+              });
+            }
+          }
         } catch (e) {}
+      };
+
+      sse.onerror = () => {
+        if (sseChip) {
+          sseChip.style.color = '#ffa726';
+          sseChip.style.borderColor = 'rgba(255, 170, 0, 0.3)';
+          sseChip.style.background = 'rgba(255, 170, 0, 0.1)';
+          sseChip.innerHTML = '<span id="ssePulseDot">○</span> SSE: RECONNECTING...';
+        }
       };
     }
 

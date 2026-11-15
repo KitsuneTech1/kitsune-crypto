@@ -41,12 +41,31 @@ from core.ledger import LedgerState, Transaction
 from core.bridge import FastBridgeGateway, SupportedChain, AssetType
 
 HTML_PATH = Path(__file__).resolve().parent / "index.html"
-CLUSTER_NODES = [
-    ("node-0", "192.168.1.201:9200"),
-    ("node-1", "192.168.1.202:9200"),
-    ("node-2", "192.168.1.203:9200"),
-    ("node-3", "192.168.1.204:9200"),
-]
+def _load_cluster_nodes():
+    env_nodes = os.environ.get("KPL_CLUSTER_NODES", "")
+    if env_nodes:
+        nodes = []
+        for item in env_nodes.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if "@" in item:
+                nid, addr = item.split("@", 1)
+            elif "=" in item:
+                nid, addr = item.split("=", 1)
+            else:
+                nid, addr = f"node-{len(nodes)}", item
+            nodes.append((nid.strip(), addr.strip()))
+        if nodes:
+            return nodes
+    return [
+        ("node-0", "192.168.1.201:9200"),
+        ("node-1", "192.168.1.202:9200"),
+        ("node-2", "192.168.1.203:9200"),
+        ("node-3", "192.168.1.204:9200"),
+    ]
+
+CLUSTER_NODES = _load_cluster_nodes()
 
 BRIDGE_GATEWAY = FastBridgeGateway()
 
@@ -147,6 +166,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "latest_hash": cluster.get("latest_hash", ""),
                         "active_nodes": cluster.get("active_nodes", 4),
                         "total_nodes": cluster.get("total_nodes", 4),
+                        "nodes": cluster.get("nodes", []),
                         "timestamp": time.time(),
                         "is_new_block": (h_val != last_h and last_h != -1),
                     }

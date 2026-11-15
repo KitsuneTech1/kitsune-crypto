@@ -13,12 +13,18 @@ import sys
 import time
 import urllib.request
 
-NODES = [
-    "192.168.1.201:9200",
-    "192.168.1.202:9200",
-    "192.168.1.203:9200",
-    "192.168.1.204:9200",
-]
+def _load_nodes():
+    env_nodes = os.environ.get("KPL_NODES", "")
+    if env_nodes:
+        return [n.strip() for n in env_nodes.split(",") if n.strip()]
+    return [
+        "192.168.1.201:9200",
+        "192.168.1.202:9200",
+        "192.168.1.203:9200",
+        "192.168.1.204:9200",
+    ]
+
+NODES = _load_nodes()
 
 
 def generate_fast_tx(index: int) -> dict:
@@ -151,4 +157,5 @@ def run_fast_stress(total_txs: int = 50):
 
 
 if __name__ == "__main__":
-    run_fast_stress(50)
+    count = int(sys.argv[1]) if len(sys.argv) > 1 else 200
+    run_fast_stress(count)
