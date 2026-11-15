@@ -174,6 +174,17 @@
       font-family: var(--mono-font);
       font-size: 11px;
     }
+    select, input {
+      background: #080a0f;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      font-family: var(--mono-font);
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      width: 100%;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
@@ -187,12 +198,100 @@
     <div class="chips">
       <div class="chip">● INVARIANTS: 7/7 PROVEN</div>
       <div class="chip" style="background: rgba(0, 242, 254, 0.1); color: var(--accent-cyan); border-color: rgba(0, 242, 254, 0.3);">● PVE2 MESH: 4/4 ACTIVE</div>
-      <div class="chip" style="background: rgba(157, 78, 221, 0.1); color: var(--accent-purple); border-color: rgba(157, 78, 221, 0.3);">● EMISSION: TAIL 0.6 KPL</div>
+      <div class="chip" style="background: rgba(157, 78, 221, 0.1); color: var(--accent-purple); border-color: rgba(157, 78, 221, 0.3);">● BRIDGES: BASE · SOL · LN · XMR</div>
       <div class="chip" style="background: rgba(255, 170, 0, 0.1); color: #ffa726; border-color: rgba(255, 170, 0, 0.3);">● BINARIES: RUST WIN + LINUX</div>
     </div>
   </div>
 
   <div class="grid">
+    <!-- One-Click Fast Multi-Chain Bridge Card -->
+    <div class="card">
+      <div class="card-title">
+        <span>FAST MULTI-CHAIN BRIDGE (EVERYDAY TOKENS)</span>
+        <span class="badge-ok">INSTANT SETTLEMENT</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+        Swap common assets directly into private KPL stealth UTXOs in seconds:
+      </div>
+      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+        <div>
+          <label style="font-size: 11px; color: var(--text-muted);">Source Chain & Token:</label>
+          <select id="bridgeRouteSelect" onchange="updateBridgeQuote()">
+            <option value="base:USDC">Base — USDC (~3s)</option>
+            <option value="arbitrum:USDC">Arbitrum — USDC (~3s)</option>
+            <option value="solana:SOL">Solana — SOL (~2s)</option>
+            <option value="lightning:BTC">Bitcoin — Lightning BTC (~1s)</option>
+            <option value="monero:XMR">Monero — XMR Atomic Swap (~2m)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 11px; color: var(--text-muted);">Deposit Amount:</label>
+          <input type="number" id="bridgeAmountInput" value="50" min="1" step="any" oninput="updateBridgeQuote()">
+        </div>
+      </div>
+
+      <div style="background: #080a0f; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+        <div class="metric-row">
+          <span class="metric-label">Estimated Output:</span>
+          <span class="metric-value" style="color: var(--accent-green);" id="quoteKplOutput">19.900000 KPL</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Settlement Time:</span>
+          <span class="metric-value" style="color: var(--accent-cyan);" id="quoteEstSpeed">~3 seconds</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Bridge Fee:</span>
+          <span class="metric-value" id="quoteFee">$0.50</span>
+        </div>
+      </div>
+
+      <button style="width: 100%;" onclick="createBridgeDeposit()">GET DEPOSIT ADDRESS / INVOICE</button>
+      <div id="bridgeOrderBox" style="margin-top: 12px; display: none;">
+        <div class="metric-label" style="font-size: 11px;">Send Deposit To:</div>
+        <div class="code-box" id="bridgeDepositHandle">0x...</div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--accent-green);" id="bridgeOrderStatus">
+          ● Order Created: Awaiting network deposit. Output will credit directly to your stealth address.
+        </div>
+      </div>
+    </div>
+
+    <!-- Live PVE2 Validator Cluster -->
+    <div class="card">
+      <div class="card-title">
+        <span>LIVE PVE2 VALIDATOR CLUSTER (CT 401..404)</span>
+        <span class="badge-ok" id="clusterStatusBadge">MESH HEALTHY</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Cluster Live Height:</span>
+        <span class="metric-value" style="color: var(--accent-cyan);" id="liveClusterHeight">Syncing...</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Quorum Requirement:</span>
+        <span class="metric-value">3 / 4 Validators (Single-Slot BFT)</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Latest Block Hash:</span>
+        <span class="metric-value" style="font-size: 11px;" id="liveLatestHash">---</span>
+      </div>
+      <div class="node-grid" id="nodeGridContainer">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- Live Mempool & Transaction Feed -->
+    <div class="card">
+      <div class="card-title">
+        <span>LIVE MEMPOOL & TX BROADCAST FEED</span>
+        <span class="badge-ok" id="mempoolBadge">ACTIVE LISTENER</span>
+      </div>
+      <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+        Broadcast private transactions via <code>kpl-cli tx submit &lt;addr&gt; &lt;amt&gt; &lt;fee&gt;</code> to stream live:
+      </div>
+      <div id="mempoolContainer" style="max-height: 220px; overflow-y: auto;">
+        <div style="color: var(--text-muted); font-size: 12px; font-family: var(--mono-font);">Mempool clear. All transactions finalized into blocks.</div>
+      </div>
+    </div>
+
     <!-- Invariant Verification Matrix -->
     <div class="card">
       <div class="card-title">
@@ -231,70 +330,44 @@
         Formal machine-checked invariant proofs passed (7/7). Zero reorgs, zero double-spends, zero inflation vectors, proven Rust dalek core.
       </div>
     </div>
-
-    <!-- Live PVE2 Validator Cluster -->
-    <div class="card">
-      <div class="card-title">
-        <span>LIVE PVE2 VALIDATOR CLUSTER (CT 401..404)</span>
-        <span class="badge-ok" id="clusterStatusBadge">MESH HEALTHY</span>
-      </div>
-      <div class="metric-row">
-        <span class="metric-label">Cluster Live Height:</span>
-        <span class="metric-value" style="color: var(--accent-cyan);" id="liveClusterHeight">Syncing...</span>
-      </div>
-      <div class="metric-row">
-        <span class="metric-label">Quorum Requirement:</span>
-        <span class="metric-value">3 / 4 Validators (Single-Slot BFT)</span>
-      </div>
-      <div class="metric-row">
-        <span class="metric-label">Latest Block Hash:</span>
-        <span class="metric-value" style="font-size: 11px;" id="liveLatestHash">---</span>
-      </div>
-      <div class="node-grid" id="nodeGridContainer">
-        <!-- Rendered dynamically -->
-      </div>
-    </div>
-
-    <!-- Live Mempool & Transaction Feed -->
-    <div class="card">
-      <div class="card-title">
-        <span>LIVE MEMPOOL & TX BROADCAST FEED</span>
-        <span class="badge-ok" id="mempoolBadge">ACTIVE LISTENER</span>
-      </div>
-      <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
-        Broadcast private transactions via <code>kpl-cli tx submit &lt;addr&gt; &lt;amt&gt; &lt;fee&gt;</code> to stream transactions live:
-      </div>
-      <div id="mempoolContainer" style="max-height: 260px; overflow-y: auto;">
-        <div style="color: var(--text-muted); font-size: 12px; font-family: var(--mono-font);">No transactions in current mempool. Waiting for broadcast...</div>
-      </div>
-    </div>
-
-    <!-- Live Stealth Wallet Sandbox -->
-    <div class="card">
-      <div class="card-title">
-        <span>STEALTH ADDRESS GENERATOR</span>
-        <button onclick="generateStealthWallet()">GENERATE WALLET</button>
-      </div>
-      <div class="metric-label" style="font-size: 12px; margin-bottom: 4px;">Public Dual-Key Stealth Address:</div>
-      <div class="code-box" id="walletAddr">kpl_3b2f91a7c4e80...</div>
-      <div style="margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-        <div>
-          <div class="metric-label" style="font-size: 11px;">View Public Key:</div>
-          <div class="code-box" style="font-size: 10px;" id="viewPub">0x4a91...</div>
-        </div>
-        <div>
-          <div class="metric-label" style="font-size: 11px;">Spend Public Key:</div>
-          <div class="code-box" style="font-size: 10px;" id="spendPub">0x8f22...</div>
-        </div>
-      </div>
-      <div style="margin-top: 14px;">
-        <button class="btn-secondary" style="width: 100%;" onclick="simulateStealthTx()">SIMULATE PRIVATE STEALTH TRANSFER</button>
-      </div>
-      <div id="txResult" style="margin-top: 10px; font-family: var(--mono-font); font-size: 11px; color: var(--accent-green); display: none;"></div>
-    </div>
   </div>
 
   <script>
+    async function updateBridgeQuote() {
+      const select = document.getElementById('bridgeRouteSelect').value;
+      const [chain, asset] = select.split(':');
+      const amount = parseFloat(document.getElementById('bridgeAmountInput').value) || 10;
+      try {
+        const res = await fetch(`/api/bridge/quote?chain=${chain}&asset=${asset}&amount=${amount}`);
+        const data = await res.json();
+        document.getElementById('quoteKplOutput').innerText = data.kpl_received.toFixed(6) + ' KPL';
+        document.getElementById('quoteEstSpeed').innerText = '~' + data.estimated_seconds + ' seconds';
+        document.getElementById('quoteFee').innerText = data.fee_amount + ' ' + data.asset;
+      } catch (err) {
+        console.warn('Quote error:', err);
+      }
+    }
+
+    async function createBridgeDeposit() {
+      const select = document.getElementById('bridgeRouteSelect').value;
+      const [chain, asset] = select.split(':');
+      const amount = parseFloat(document.getElementById('bridgeAmountInput').value) || 50;
+
+      try {
+        const res = await fetch('/api/bridge/deposit', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({chain, asset, amount})
+        });
+        const data = await res.json();
+        document.getElementById('bridgeOrderBox').style.display = 'block';
+        document.getElementById('bridgeDepositHandle').innerText = data.deposit_handle;
+        document.getElementById('bridgeOrderStatus').innerText = `● Order #${data.order_id} Active: Expecting ${data.amount} ${data.asset}. Crediting ${data.kpl_received} KPL in ~${data.estimated_seconds}s.`;
+      } catch (err) {
+        alert('Deposit order creation error: ' + err.message);
+      }
+    }
+
     async function fetchCluster() {
       try {
         const res = await fetch('/api/cluster');
@@ -356,36 +429,6 @@
       }
     }
 
-    async function generateStealthWallet() {
-      try {
-        const res = await fetch('/api/wallet/generate');
-        const data = await res.json();
-        document.getElementById('walletAddr').innerText = data.address;
-        document.getElementById('viewPub').innerText = data.view_public.slice(0, 18) + '...';
-        document.getElementById('spendPub').innerText = data.spend_public.slice(0, 18) + '...';
-      } catch (err) {
-        console.warn(err);
-      }
-    }
-
-    async function simulateStealthTx() {
-      const el = document.getElementById('txResult');
-      el.style.display = 'block';
-      el.innerText = 'Constructing CLSAG Ring (size 16) + Pedersen Commitment...';
-      try {
-        const res = await fetch('/api/tx/simulate');
-        const data = await res.json();
-        el.innerHTML = `
-          ✔ Real Signer Hidden in Ring of ${data.ring_size} Keys<br>
-          ✔ Deterministic Key Image: ${data.key_image.slice(0, 18)}...<br>
-          ✔ Bulletproofs+ Zero-Knowledge Verified<br>
-          ✔ State Machine Invariant: Zero Inflation Preserved
-        `;
-      } catch (err) {
-        el.innerText = 'Simulation failed: ' + err.message;
-      }
-    }
-
     async function runVerification() {
       const btn = document.getElementById('verifyBtn');
       const sum = document.getElementById('verifySummary');
@@ -403,6 +446,7 @@
       }
     }
 
+    updateBridgeQuote();
     fetchCluster();
     fetchMempool();
     setInterval(fetchCluster, 3000);

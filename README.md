@@ -61,6 +61,15 @@ kpl-cli.exe wallet generate
 kpl-cli.exe status --node 192.168.1.201:9200
 ```
 
+### Fast Multi-Chain Bridge Quotes & Deposits
+```bash
+# Get quote for 100 USDC on Base
+kpl-cli.exe bridge quote base USDC 100
+
+# Initiate deposit for 2 SOL on Solana
+kpl-cli.exe bridge deposit solana SOL 2.0 <your_kpl_recipient_address>
+```
+
 ### Broadcasting a Private Transaction
 ```bash
 kpl-cli.exe tx submit <recipient_kpl_addr> <amount_atomic> <fee_atomic> --node 192.168.1.201:9200
@@ -68,7 +77,17 @@ kpl-cli.exe tx submit <recipient_kpl_addr> <amount_atomic> <fee_atomic> --node 1
 
 ---
 
-## 4. Formal Verification Suite
+## 4. One-Command Self-Hosting (Docker Compose)
+
+Spin up a local node and telemetry dashboard with Docker:
+```bash
+docker compose up -d
+```
+Access the explorer at `http://localhost:8792`.
+
+---
+
+## 5. Formal Verification Suite
 
 Run the mechanized invariant verification harness locally:
 ```bash

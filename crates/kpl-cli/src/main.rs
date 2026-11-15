@@ -1,4 +1,4 @@
-//! Kitsune Private Layer (kpl-cli) - Fast Rust CLI Wallet and Offline Signer.
+//! Kitsune Private Layer (kpl-cli) - Fast Rust CLI Wallet, Offline Signer, and Bridge Client.
 
 use std::env;
 use std::io::{Read, Write};
@@ -18,12 +18,15 @@ use kpl_core::{
 };
 
 const DEFAULT_NODE: &str = "192.168.1.201:9200";
+const DEFAULT_BRIDGE_SERVER: &str = "127.0.0.1:8792";
 
 fn print_help() {
     println!("KITSUNE PRIVATE LAYER (KPL) CLI WALLET v0.1.0");
     println!("Usage:");
     println!("  kpl-cli wallet generate");
     println!("  kpl-cli status [--node <host:port>]");
+    println!("  kpl-cli bridge quote <chain> <asset> <amount> [--server <host:port>]");
+    println!("  kpl-cli bridge deposit <chain> <asset> <amount> <kpl_recipient> [--server <host:port>]");
     println!("  kpl-cli tx sign <recipient_kpl_addr> <amount_atomic> <fee_atomic>");
     println!("  kpl-cli tx submit <recipient_kpl_addr> <amount_atomic> <fee_atomic> [--node <host:port>]");
     println!("  kpl-cli tx verify-sample");
@@ -124,6 +127,98 @@ fn main() {
                     eprintln!("RPC Error: {}", err);
                     process::exit(1);
                 }
+            }
+        }
+        "bridge" => {
+            if args.len() >= 3 && args[2] == "quote" {
+                if args.len() < 6 {
+                    println!("Usage: kpl-cli bridge quote <chain> <asset> <amount> [--server <host:port>]");
+                    println!("Example: kpl-cli bridge quote base USDC 100");
+                    process::exit(1);
+                }
+                let chain = &args[3];
+                let asset = &args[4];
+                let amount = &args[5];
+                let mut server = DEFAULT_BRIDGE_SERVER;
+                if args.len() >= 8 && args[6] == "--server" {
+                    server = &args[7];
+                }
+
+                let path = format!("/api/bridge/quote?chain={}&asset={}&amount={}", chain, asset, amount);
+                match http_request(server, "GET", &path, None) {
+                    Ok((code, body)) => {
+                        if code == 200 {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) {
+                                println!("=== FAST MULTI-CHAIN BRIDGE QUOTE ===");
+                                println!("Route:            {} -> KPL", val["source_chain"].as_str().unwrap_or("-").to_uppercase());
+                                println!("Asset Deposited:  {} {}", val["deposit_amount"], val["asset"].as_str().unwrap_or("-"));
+                                println!("KPL Output:       {} KPL", val["kpl_received"]);
+                                println!("Est. Finality:    ~{} seconds", val["estimated_seconds"]);
+                                println!("Bridge Fee:       {} {}", val["fee_amount"], val["asset"].as_str().unwrap_or("-"));
+                                println!("Exchange Rate:    1 {} = {} KPL", val["asset"].as_str().unwrap_or("-"), val["exchange_rate"]);
+                                println!("=======================================");
+                            } else {
+                                println!("{}", body);
+                            }
+                        } else {
+                            println!("Quote Error {}: {}", code, body);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Connection Error: {}", err);
+                        process::exit(1);
+                    }
+                }
+            } else if args.len() >= 3 && args[2] == "deposit" {
+                if args.len() < 7 {
+                    println!("Usage: kpl-cli bridge deposit <chain> <asset> <amount> <kpl_recipient> [--server <host:port>]");
+                    println!("Example: kpl-cli bridge deposit base USDC 50 kpl_your_address...");
+                    process::exit(1);
+                }
+                let chain = &args[3];
+                let asset = &args[4];
+                let amount: f64 = args[5].parse().unwrap_or(50.0);
+                let recipient = &args[6];
+                let mut server = DEFAULT_BRIDGE_SERVER;
+                if args.len() >= 9 && args[7] == "--server" {
+                    server = &args[8];
+                }
+
+                let req_body = serde_json::json!({
+                    "chain": chain,
+                    "asset": asset,
+                    "amount": amount,
+                    "kpl_recipient": recipient
+                }).to_string();
+
+                match http_request(server, "POST", "/api/bridge/deposit", Some(&req_body)) {
+                    Ok((code, body)) => {
+                        if code == 200 {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) {
+                                println!("=== BRIDGE DEPOSIT ORDER INITIATED ===");
+                                println!("Order ID:         {}", val["order_id"].as_str().unwrap_or("-"));
+                                println!("Chain:            {}", val["source_chain"].as_str().unwrap_or("-").to_uppercase());
+                                println!("Expected Deposit: {} {}", val["amount"], val["asset"].as_str().unwrap_or("-"));
+                                println!("KPL Credit:       {} KPL", val["kpl_received"]);
+                                println!("Recipient:        {}", val["kpl_recipient"].as_str().unwrap_or("-"));
+                                println!("Est. Speed:       ~{} seconds", val["estimated_seconds"]);
+                                println!("\n>>> SEND FUNDS TO DEPOSIT ADDRESS / INVOICE <<<");
+                                println!("{}", val["deposit_handle"].as_str().unwrap_or("-"));
+                                println!("=======================================");
+                            } else {
+                                println!("{}", body);
+                            }
+                        } else {
+                            println!("Deposit Error {}: {}", code, body);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Connection Error: {}", err);
+                        process::exit(1);
+                    }
+                }
+            } else {
+                print_help();
             }
         }
         "tx" => {

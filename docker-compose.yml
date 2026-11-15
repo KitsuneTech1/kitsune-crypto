@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  kpl-validator-node:
+    build: .
+    container_name: kpl-validator-node
+    restart: unless-stopped
+    command: ["python", "-m", "network.daemon", "--node-id", "node-local", "--node-index", "0", "--total-nodes", "1", "--port", "9200"]
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  kpl-dashboard:
+    build: .
+    container_name: kpl-dashboard
+    restart: unless-stopped
+    command: ["python", "dashboard/server.py"]
+    ports:
+      - "8792:8792"
+    environment:
+      - KPL_PORT=8792
+    depends_on:
+      - kpl-validator-node

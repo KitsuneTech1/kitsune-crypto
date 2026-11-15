@@ -1,5 +1,5 @@
 """Lightweight dashboard and invariant telemetry server for Kitsune Private Layer.
-Streams live cluster telemetry and mempool transactions from Proxmox PVE2 validator nodes (CT 401..404).
+Streams live cluster telemetry, mempool transactions, and fast cross-chain bridge quotes.
 """
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -36,6 +37,7 @@ from core.consensus import (
     TAIL_EMISSION_ATOMIC,
 )
 from core.ledger import LedgerState, Transaction
+from core.bridge import FastBridgeGateway, SupportedChain, AssetType
 
 HTML_PATH = Path(__file__).resolve().parent / "index.html"
 CLUSTER_NODES = [
@@ -44,6 +46,8 @@ CLUSTER_NODES = [
     ("node-2", "192.168.1.203:9200"),
     ("node-3", "192.168.1.204:9200"),
 ]
+
+BRIDGE_GATEWAY = FastBridgeGateway()
 
 
 def query_cluster_telemetry() -> dict:
@@ -105,7 +109,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        url = self.path.split("?")[0]
+        parsed = urllib.parse.urlparse(self.path)
+        url = parsed.path
+        query = urllib.parse.parse_qs(parsed.query)
 
         if url == "/" or url == "/index.html":
             if not HTML_PATH.exists():
@@ -156,6 +162,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json(200, mempool_data)
             return
 
+        if url == "/api/bridge/quote":
+            chain_str = query.get("chain", ["base"])[0].lower()
+            asset_str = query.get("asset", ["USDC"])[0].upper()
+            amount_str = query.get("amount", ["50"])[0]
+            try:
+                chain = SupportedChain(chain_str)
+                asset = AssetType(asset_str)
+                amt = float(amount_str)
+                quote = BRIDGE_GATEWAY.get_quote(chain, asset, amt)
+                self.send_json(200, {
+                    "source_chain": quote.source_chain.value,
+                    "asset": quote.asset.value,
+                    "deposit_amount": quote.deposit_amount,
+                    "kpl_received": quote.kpl_received,
+                    "fee_amount": quote.fee_amount,
+                    "estimated_seconds": quote.estimated_seconds,
+                    "exchange_rate": quote.exchange_rate,
+                })
+            except Exception as e:
+                self.send_json(400, {"error": str(e)})
+            return
+
         if url == "/api/wallet/generate":
             keys = StealthWalletKeys.generate()
             self.send_json(200, {
@@ -198,6 +226,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "errors": len(result.errors),
                 "duration_ms": dt_ms,
             })
+            return
+
+        self.send_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
+
+    def do_POST(self):
+        url = self.path.split("?")[0]
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+
+        if url == "/api/bridge/deposit":
+            try:
+                payload = json.loads(body.decode())
+                chain = SupportedChain(payload.get("chain", "base").lower())
+                asset = AssetType(payload.get("asset", "USDC").upper())
+                amount = float(payload.get("amount", 50))
+                kpl_addr = payload.get("kpl_recipient", "")
+                if not kpl_addr.startswith("kpl_"):
+                    # Generate a default stealth destination if not provided
+                    keys = StealthWalletKeys.generate()
+                    kpl_addr = keys.public_address()
+
+                order = BRIDGE_GATEWAY.create_inbound_order(chain, asset, amount, kpl_addr)
+                quote = BRIDGE_GATEWAY.get_quote(chain, asset, amount)
+                self.send_json(200, {
+                    "order_id": order.order_id,
+                    "source_chain": order.source_chain.value,
+                    "asset": order.asset.value,
+                    "amount": order.amount,
+                    "kpl_received": quote.kpl_received,
+                    "estimated_seconds": quote.estimated_seconds,
+                    "deposit_handle": order.deposit_address_or_invoice,
+                    "kpl_recipient": order.kpl_recipient,
+                    "status": order.status,
+                })
+            except Exception as e:
+                self.send_json(400, {"error": str(e)})
             return
 
         self.send_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
