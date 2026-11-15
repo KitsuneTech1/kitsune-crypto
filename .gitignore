@@ -5,3 +5,7 @@ __pycache__/
 *.tar.gz
 .DS_Store
 *.lock
+dist/*.exe
+dist/*.zip
+dist/kpl-cli-linux-amd64
+dist/whitepaper.pdf

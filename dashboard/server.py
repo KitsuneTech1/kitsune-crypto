@@ -159,6 +159,126 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
             return
 
+        if url == "/api/search":
+            q = query.get("q", [""])[0].strip()
+            if not q:
+                self.send_json(400, {"error": "Missing search query parameter q"})
+                return
+
+            # 1. Search Bridge Orders
+            if q in BRIDGE_GATEWAY.orders:
+                order = BRIDGE_GATEWAY.orders[q]
+                quote = BRIDGE_GATEWAY.get_quote(order.source_chain, order.asset, order.amount)
+                self.send_json(200, {
+                    "found": True,
+                    "type": "BRIDGE_ORDER",
+                    "title": f"Bridge Inbound Order #{order.order_id}",
+                    "details": {
+                        "order_id": order.order_id,
+                        "source_chain": order.source_chain.value.upper(),
+                        "asset": order.asset.value,
+                        "amount": order.amount,
+                        "kpl_received": quote.kpl_received,
+                        "status": order.status,
+                        "recipient": order.kpl_recipient,
+                        "deposit_handle": order.deposit_address_or_invoice,
+                        "kpl_tx_hash": order.kpl_tx_hash or "",
+                        "external_tx_hash": order.external_tx_hash or "",
+                    }
+                })
+                return
+
+            # 2. Search Outbound Withdrawals
+            if q in BRIDGE_GATEWAY.withdrawals:
+                w = BRIDGE_GATEWAY.withdrawals[q]
+                self.send_json(200, {
+                    "found": True,
+                    "type": "BRIDGE_WITHDRAWAL",
+                    "title": f"Bridge Outbound Withdrawal #{w.withdrawal_id}",
+                    "details": {
+                        "withdrawal_id": w.withdrawal_id,
+                        "target_chain": w.target_chain.value.upper(),
+                        "asset": w.asset.value,
+                        "kpl_burned": w.kpl_burn_amount,
+                        "payout_amount": w.payout_amount,
+                        "destination_address": w.destination_address,
+                        "burn_tx_hash": w.burn_tx_hash,
+                        "key_image": w.key_image,
+                        "payout_tx_hash": w.payout_tx_hash,
+                        "status": w.status,
+                    }
+                })
+                return
+
+            # 3. Search Mempool & Confirmed Transactions across Cluster
+            found_tx = None
+            for _, addr in CLUSTER_NODES:
+                try:
+                    req = urllib.request.Request(f"http://{addr}/mempool", headers={"User-Agent": "KPL-Search"})
+                    with urllib.request.urlopen(req, timeout=1.0) as resp:
+                        m_data = json.loads(resp.read().decode())
+                        for tx in m_data.get("recent_confirmed", []) + m_data.get("pending", []):
+                            if tx.get("tx_hash") == q or tx.get("key_image") == q or tx.get("recipient") == q:
+                                found_tx = tx
+                                break
+                    if found_tx:
+                        break
+                except Exception:
+                    pass
+
+            if found_tx:
+                self.send_json(200, {
+                    "found": True,
+                    "type": "TRANSACTION",
+                    "title": f"Transaction {found_tx.get('tx_hash', '')[:16]}...",
+                    "details": found_tx
+                })
+                return
+
+            # 4. Search Blocks by Height or Hash
+            if q.isdigit():
+                h_target = int(q)
+                for _, addr in CLUSTER_NODES:
+                    try:
+                        req = urllib.request.Request(f"http://{addr}/chain", headers={"User-Agent": "KPL-Search"})
+                        with urllib.request.urlopen(req, timeout=1.5) as resp:
+                            chain_data = json.loads(resp.read().decode())
+                            for b in chain_data:
+                                if b.get("height") == h_target:
+                                    self.send_json(200, {
+                                        "found": True,
+                                        "type": "BLOCK",
+                                        "title": f"Block #{b.get('height')}",
+                                        "details": b
+                                    })
+                                    return
+                    except Exception:
+                        pass
+
+            for _, addr in CLUSTER_NODES:
+                try:
+                    req = urllib.request.Request(f"http://{addr}/status", headers={"User-Agent": "KPL-Search"})
+                    with urllib.request.urlopen(req, timeout=1.0) as resp:
+                        s_data = json.loads(resp.read().decode())
+                        for b in s_data.get("recent_blocks", []):
+                            if b.get("hash") == q:
+                                self.send_json(200, {
+                                    "found": True,
+                                    "type": "BLOCK",
+                                    "title": f"Block #{b.get('height')}",
+                                    "details": b
+                                })
+                                return
+                except Exception:
+                    pass
+
+            self.send_json(200, {
+                "found": False,
+                "query": q,
+                "message": f"No block, transaction, key image, or bridge order found matching '{q}'"
+            })
+            return
+
         if url == "/api/status":
             cluster = query_cluster_telemetry()
             height = cluster["height"] if cluster["height"] > 0 else 14892

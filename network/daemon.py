@@ -17,7 +17,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -129,6 +129,30 @@ class DaemonState:
         with self.lock:
             current_h = self.chain[-1].height
             added = 0
+            # Checkpoint snap: if restarting from 0 and peer chain is ahead
+            if current_h == 0 and peer_blocks and peer_blocks[0].get("height", 0) > 1:
+                first_b = peer_blocks[0]
+                qc_data = first_b.get("qc")
+                if qc_data and len(qc_data.get("signatures", {})) >= self.quorum_threshold:
+                    qc = QuorumCertificate(
+                        block_hash=qc_data["block_hash"],
+                        height=qc_data["height"],
+                        signatures=qc_data["signatures"],
+                    )
+                    snap_block = BlockHeader(
+                        height=first_b["height"],
+                        prev_hash=first_b["prev_hash"],
+                        merkle_root=first_b["merkle_root"],
+                        timestamp=first_b["timestamp"],
+                        proposer=first_b["proposer"],
+                        reward=first_b["reward"],
+                        quorum_cert=qc,
+                    )
+                    self.chain = [snap_block]
+                    current_h = snap_block.height
+                    added += 1
+                    logger.info("Fast-sync snapshot established at block #%d [hash=%s]", snap_block.height, snap_block.hash()[:12])
+
             for b_data in peer_blocks:
                 h = b_data["height"]
                 if h <= current_h:
@@ -256,12 +280,14 @@ class DaemonHTTPHandler(BaseHTTPRequestHandler):
                 GLOBAL_STATE.mempool.append(tx_data)
                 logger.info("Accepted transaction %s into mempool (key_image=%s)", tx_hash[:12], key_image[:12])
 
-            for peer in GLOBAL_STATE.peers:
-                try:
-                    p_req = urllib.request.Request(f"http://{peer}/gossip_tx", data=body, headers={"Content-Type": "application/json"}, method="POST")
-                    urllib.request.urlopen(p_req, timeout=1.0)
-                except Exception:
-                    pass
+            def _async_gossip(peers_list, raw_body):
+                for p in peers_list:
+                    try:
+                        p_req = urllib.request.Request(f"http://{p}/gossip_tx", data=raw_body, headers={"Content-Type": "application/json"}, method="POST")
+                        urllib.request.urlopen(p_req, timeout=1.0)
+                    except Exception:
+                        pass
+            threading.Thread(target=_async_gossip, args=(list(GLOBAL_STATE.peers), body), daemon=True).start()
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -457,7 +483,7 @@ def main():
     driver_thread = threading.Thread(target=consensus_worker_loop, args=(GLOBAL_STATE,), daemon=True)
     driver_thread.start()
 
-    server = HTTPServer(("0.0.0.0", args.port), DaemonHTTPHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", args.port), DaemonHTTPHandler)
     logger.info("KPL Daemon %s listening on 0.0.0.0:%d with peers %s", args.node_id, args.port, peer_list)
     server.serve_forever()
 
