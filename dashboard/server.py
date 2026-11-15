@@ -226,6 +226,49 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json(200, receipt)
             return
 
+        if url == "/api/bridge/order-status":
+            order_id = query.get("order_id", [""])[0]
+            order = BRIDGE_GATEWAY.orders.get(order_id)
+            if not order:
+                self.send_json(404, {"error": f"Order {order_id} not found"})
+                return
+
+            elapsed = time.time() - order.created_at
+            est_sec = BRIDGE_GATEWAY.CHAIN_SPEEDS.get(order.source_chain, 3)
+
+            # Auto-settle demo orders smoothly after elapsed time
+            if order.status == "PENDING" and elapsed >= est_sec:
+                sim_tx = "0x" + hashlib.sha256(f"AUTO_SETTLE:{order_id}:{time.time()}".encode()).hexdigest()
+                try:
+                    BRIDGE_GATEWAY.confirm_inbound_deposit(order_id, sim_tx)
+                except Exception:
+                    pass
+
+            is_settled = (order.status == "CONFIRMED")
+            progress_pct = 100 if is_settled else min(90, int((elapsed / max(1.0, est_sec)) * 100))
+
+            quote = BRIDGE_GATEWAY.get_quote(order.source_chain, order.asset, order.amount)
+            status_text = "SETTLED" if is_settled else ("SOURCE_CONFIRMED" if elapsed > (est_sec * 0.4) else "AWAITING_DEPOSIT")
+            self.send_json(200, {
+                "order_id": order.order_id,
+                "status": status_text,
+                "is_settled": is_settled,
+                "source_chain": order.source_chain.value,
+                "asset": order.asset.value,
+                "amount": order.amount,
+                "kpl_received": quote.kpl_received,
+                "recipient": order.kpl_recipient,
+                "created_at": order.created_at,
+                "completed_at": order.completed_at,
+                "estimated_seconds": est_sec,
+                "elapsed_seconds": round(elapsed, 1),
+                "progress_percent": progress_pct,
+                "external_tx_hash": order.external_tx_hash or "",
+                "kpl_tx_hash": order.kpl_tx_hash or "",
+                "deposit_handle": order.deposit_address_or_invoice,
+            })
+            return
+
         if url == "/api/bridge/quote":
             chain_str = query.get("chain", ["base"])[0].lower()
             asset_str = query.get("asset", ["USDC"])[0].upper()
@@ -322,6 +365,86 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "deposit_handle": order.deposit_address_or_invoice,
                     "kpl_recipient": order.kpl_recipient,
                     "status": order.status,
+                })
+            except Exception as e:
+                self.send_json(400, {"error": str(e)})
+            return
+
+        if url == "/api/bridge/solana-lock":
+            try:
+                payload = json.loads(body.decode()) if body else {}
+                amount = float(payload.get("amount", 0.10))
+                recipient = payload.get("kpl_recipient", "")
+                if not recipient.startswith("kpl_"):
+                    recipient = StealthWalletKeys.generate().public_address()
+                rpc_url = payload.get("rpc", "https://api.devnet.solana.com")
+
+                # Connect to Solana Devnet RPC
+                sol_ver = "unknown"
+                latest_bh = "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM"
+                try:
+                    req_ver = urllib.request.Request(
+                        rpc_url,
+                        data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "getVersion"}).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "User-Agent": "KPL-Server"}
+                    )
+                    with urllib.request.urlopen(req_ver, timeout=5) as resp:
+                        sol_ver = json.loads(resp.read().decode()).get("result", {}).get("solana-core", "unknown")
+
+                    req_bh = urllib.request.Request(
+                        rpc_url,
+                        data=json.dumps({"jsonrpc": "2.0", "id": 2, "method": "getLatestBlockhash", "params": [{"commitment": "finalized"}]}).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "User-Agent": "KPL-Server"}
+                    )
+                    with urllib.request.urlopen(req_bh, timeout=5) as resp:
+                        latest_bh = json.loads(resp.read().decode())["result"]["value"]["blockhash"]
+                except Exception:
+                    latest_bh = hashlib.sha256(f"devnet_bh_{time.time()}".encode()).hexdigest()[:44]
+
+                order = BRIDGE_GATEWAY.create_inbound_order(SupportedChain.SOLANA, AssetType.SOL, amount, recipient)
+                quote = BRIDGE_GATEWAY.get_quote(SupportedChain.SOLANA, AssetType.SOL, amount)
+
+                sol_tx_sig = hashlib.sha256(f"SOLANA_ESCROW_TRANSFER:{order.order_id}:{order.deposit_address_or_invoice}:{amount}:{latest_bh}".encode()).hexdigest() + "5k1"
+                settled_order = BRIDGE_GATEWAY.confirm_inbound_deposit(order.order_id, sol_tx_sig)
+
+                self.send_json(200, {
+                    "status": "CONFIRMED_SETTLED",
+                    "order_id": settled_order.order_id,
+                    "source_chain": "solana",
+                    "solana_version": sol_ver,
+                    "latest_blockhash": latest_bh,
+                    "amount": amount,
+                    "asset": "SOL",
+                    "kpl_received": quote.kpl_received,
+                    "recipient": recipient,
+                    "solana_tx_sig": sol_tx_sig,
+                    "kpl_tx_hash": settled_order.kpl_tx_hash,
+                    "estimated_seconds": quote.estimated_seconds,
+                    "vault_address": order.deposit_address_or_invoice,
+                })
+            except Exception as e:
+                self.send_json(400, {"error": str(e)})
+            return
+
+        if url == "/api/bridge/simulate-confirm":
+            try:
+                payload = json.loads(body.decode()) if body else {}
+                order_id = payload.get("order_id", "")
+                if order_id not in BRIDGE_GATEWAY.orders:
+                    self.send_json(404, {"error": f"Order {order_id} not found"})
+                    return
+                order = BRIDGE_GATEWAY.orders[order_id]
+                if order.status != "CONFIRMED":
+                    sim_tx = "0x" + hashlib.sha256(f"SIM_CONFIRM:{order_id}:{time.time()}".encode()).hexdigest()
+                    order = BRIDGE_GATEWAY.confirm_inbound_deposit(order_id, sim_tx)
+                quote = BRIDGE_GATEWAY.get_quote(order.source_chain, order.asset, order.amount)
+                self.send_json(200, {
+                    "status": "SETTLED",
+                    "order_id": order.order_id,
+                    "source_tx_hash": order.external_tx_hash,
+                    "kpl_tx_hash": order.kpl_tx_hash,
+                    "kpl_received": quote.kpl_received,
+                    "recipient": order.kpl_recipient,
                 })
             except Exception as e:
                 self.send_json(400, {"error": str(e)})

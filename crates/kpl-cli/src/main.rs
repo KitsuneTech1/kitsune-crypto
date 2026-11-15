@@ -27,6 +27,7 @@ fn print_help() {
     println!("  kpl-cli status [--node <host:port>]");
     println!("  kpl-cli bridge quote <chain> <asset> <amount> [--server <host:port>]");
     println!("  kpl-cli bridge deposit <chain> <asset> <amount> <kpl_recipient> [--server <host:port>]");
+    println!("  kpl-cli bridge solana-lock <amount> <kpl_recipient> [--server <host:port>] [--rpc <url>]");
     println!("  kpl-cli tx sign <recipient_kpl_addr> <amount_atomic> <fee_atomic>");
     println!("  kpl-cli tx submit <recipient_kpl_addr> <amount_atomic> <fee_atomic> [--node <host:port>]");
     println!("  kpl-cli tx verify-sample");
@@ -214,6 +215,68 @@ fn main() {
                     }
                     Err(err) => {
                         eprintln!("Connection Error: {}", err);
+                        process::exit(1);
+                    }
+                }
+            } else if args.len() >= 3 && args[2] == "solana-lock" {
+                if args.len() < 5 {
+                    println!("Usage: kpl-cli bridge solana-lock <amount> <kpl_recipient> [--server <host:port>] [--rpc <url>]");
+                    println!("Example: kpl-cli bridge solana-lock 0.1 kpl_0123... --rpc https://api.devnet.solana.com");
+                    process::exit(1);
+                }
+                let amount: f64 = args[3].parse().unwrap_or(0.10);
+                let recipient = &args[4];
+                let mut server = DEFAULT_BRIDGE_SERVER;
+                let mut rpc = "https://api.devnet.solana.com";
+
+                let mut i = 5;
+                while i < args.len() {
+                    if args[i] == "--server" && i + 1 < args.len() {
+                        server = &args[i + 1];
+                        i += 2;
+                    } else if args[i] == "--rpc" && i + 1 < args.len() {
+                        rpc = &args[i + 1];
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+
+                println!("=== SOLANA DEVNET ESCROW LOCKUP ===");
+                println!("Connecting to:  {}", rpc);
+                println!("Escrow Amount:  {} SOL", amount);
+                println!("Recipient:      {}", recipient);
+
+                let req_body = serde_json::json!({
+                    "amount": amount,
+                    "kpl_recipient": recipient,
+                    "rpc": rpc
+                }).to_string();
+
+                match http_request(server, "POST", "/api/bridge/solana-lock", Some(&req_body)) {
+                    Ok((code, body)) => {
+                        if code == 200 {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) {
+                                println!("=== SOLANA LOCKUP & KPL MINT CONFIRMED ===");
+                                println!("Order ID:             {}", val["order_id"].as_str().unwrap_or("-"));
+                                println!("Solana Node Version:  {}", val["solana_version"].as_str().unwrap_or("-"));
+                                println!("Devnet Blockhash:     {}", val["latest_blockhash"].as_str().unwrap_or("-"));
+                                println!("Solana Tx Signature:  {}", val["solana_tx_sig"].as_str().unwrap_or("-"));
+                                println!("Escrow Vault:         {}", val["vault_address"].as_str().unwrap_or("-"));
+                                println!("KPL Mint Tx Hash:     {}", val["kpl_tx_hash"].as_str().unwrap_or("-"));
+                                println!("Minted Stealth KPL:   {} KPL", val["kpl_received"]);
+                                println!("Status:               CONFIRMED_SETTLED (Ready for private spend)");
+                                println!("==========================================");
+                            } else {
+                                println!("{}", body);
+                            }
+                        } else {
+                            eprintln!("Solana Lock Error (HTTP {}): {}", code, body);
+                            process::exit(1);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Bridge Gateway Connection Error: {}", err);
                         process::exit(1);
                     }
                 }

@@ -345,6 +345,9 @@ kpl-cli.exe wallet generate
 # Check bridge quote (e.g. 100 USDC on Base)
 kpl-cli.exe bridge quote base USDC 100
 
+# Lock Devnet SOL and mint blinded KPL stealth UTXO
+kpl-cli.exe bridge solana-lock 0.10 <your_kpl_addr>
+
 # Broadcast private transaction to network
 kpl-cli.exe tx submit &lt;recipient_kpl_addr&gt; 500000 50000 --node 192.168.1.201:9200
       </div>

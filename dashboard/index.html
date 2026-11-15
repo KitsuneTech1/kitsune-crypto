@@ -274,6 +274,51 @@
         <div style="margin-top: 8px; font-size: 11px; color: var(--accent-green); text-align: center;" id="bridgeOrderStatus">
           ● Order Active: Output credits directly to your stealth address.
         </div>
+
+        <!-- Live Cross-Chain Settlement Tracker -->
+        <div id="bridgeTrackerCard" style="margin-top: 12px; padding: 12px; background: rgba(0, 242, 254, 0.04); border: 1px solid rgba(0, 242, 254, 0.18); border-radius: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 10px; font-weight: 700; color: var(--accent-cyan); letter-spacing: 0.5px;">LIVE CROSS-CHAIN SETTLEMENT</span>
+            <span id="trackerProgressBadge" class="badge-pending" style="font-size: 9px; padding: 2px 6px;">AWAITING DEPOSIT</span>
+          </div>
+
+          <!-- Progress Bar -->
+          <div style="background: rgba(255,255,255,0.06); height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 10px;">
+            <div id="trackerProgressBar" style="height: 100%; width: 15%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); transition: width 0.4s ease;"></div>
+          </div>
+
+          <!-- 3 Step Indicators -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; font-size: 9px; text-align: center;">
+            <div id="step1Box" style="padding: 6px; border-radius: 4px; background: rgba(0, 242, 254, 0.15); border: 1px solid var(--accent-cyan);">
+              <div style="font-weight: 700; color: #fff;">1. Inbound Order</div>
+              <div style="color: var(--text-muted); font-size: 8px;" id="step1Detail">Vault Allocated</div>
+            </div>
+            <div id="step2Box" style="padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);">
+              <div style="font-weight: 700; color: #fff;">2. Chain Proof</div>
+              <div style="color: var(--text-muted); font-size: 8px;" id="step2Detail">Awaiting Tx</div>
+            </div>
+            <div id="step3Box" style="padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);">
+              <div style="font-weight: 700; color: #fff;">3. KPL Mint</div>
+              <div style="color: var(--text-muted); font-size: 8px;" id="step3Detail">Stealth UTXO</div>
+            </div>
+          </div>
+
+          <!-- Settlement Details -->
+          <div id="trackerDetails" style="margin-top: 10px; font-size: 10px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="color: var(--text-muted);">Source Proof / Tx:</span>
+              <span id="trackerExtTx" style="color: var(--accent-cyan); font-family: monospace;">---</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span style="color: var(--text-muted);">Minted Stealth UTXO:</span>
+              <span id="trackerKplTx" style="color: var(--accent-green); font-family: monospace;">---</span>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 8px;">
+              <button class="btn-secondary" style="flex: 1; font-size: 9px; padding: 4px;" id="simConfirmBtn" onclick="simulateInstantConfirm()">SIMULATE INSTANT DEPOSIT</button>
+              <button class="btn-primary" style="flex: 1; font-size: 9px; padding: 4px; display: none;" id="downloadOrderReceiptBtn" onclick="downloadCurrentOrderReceipt()">DOWNLOAD RECEIPT</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -372,6 +417,10 @@
       }
     }
 
+    let currentOrderId = null;
+    let trackerTimer = null;
+    let latestMintTxHash = null;
+
     async function createBridgeDeposit() {
       const select = document.getElementById('bridgeRouteSelect').value;
       const [chain, asset] = select.split(':');
@@ -384,6 +433,7 @@
           body: JSON.stringify({chain, asset, amount})
         });
         const data = await res.json();
+        currentOrderId = data.order_id;
         document.getElementById('bridgeOrderBox').style.display = 'block';
         currentDepositHandle = data.deposit_handle;
         document.getElementById('bridgeDepositHandle').innerText = data.deposit_handle;
@@ -402,8 +452,93 @@
             correctLevel: QRCode.CorrectLevel.M
           });
         }
+
+        // Start Settlement Tracker
+        startTracker(currentOrderId);
       } catch (err) {
         alert('Deposit order creation error: ' + err.message);
+      }
+    }
+
+    function startTracker(orderId) {
+      if (trackerTimer) clearInterval(trackerTimer);
+      document.getElementById('trackerProgressBar').style.width = '20%';
+      document.getElementById('trackerProgressBadge').className = 'badge-pending';
+      document.getElementById('trackerProgressBadge').innerText = 'AWAITING DEPOSIT';
+      document.getElementById('step2Box').style.background = 'rgba(255,255,255,0.03)';
+      document.getElementById('step2Box').style.borderColor = 'rgba(255,255,255,0.1)';
+      document.getElementById('step2Detail').innerText = 'Awaiting Tx';
+      document.getElementById('step3Box').style.background = 'rgba(255,255,255,0.03)';
+      document.getElementById('step3Box').style.borderColor = 'rgba(255,255,255,0.1)';
+      document.getElementById('step3Detail').innerText = 'Stealth UTXO';
+      document.getElementById('trackerExtTx').innerText = '---';
+      document.getElementById('trackerKplTx').innerText = '---';
+      document.getElementById('downloadOrderReceiptBtn').style.display = 'none';
+
+      pollTracker(orderId);
+      trackerTimer = setInterval(() => pollTracker(orderId), 1200);
+    }
+
+    async function pollTracker(orderId) {
+      if (!orderId) return;
+      try {
+        const res = await fetch(`/api/bridge/order-status?order_id=${encodeURIComponent(orderId)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const pBar = document.getElementById('trackerProgressBar');
+        pBar.style.width = Math.max(15, data.progress_percent) + '%';
+
+        if (data.status === 'SOURCE_CONFIRMED' || data.is_settled) {
+          document.getElementById('step2Box').style.background = 'rgba(0, 242, 254, 0.15)';
+          document.getElementById('step2Box').style.borderColor = 'var(--accent-cyan)';
+          document.getElementById('step2Detail').innerText = 'Proof Verified';
+          if (!data.is_settled) {
+            document.getElementById('trackerProgressBadge').innerText = 'PROOF VERIFIED';
+            document.getElementById('trackerProgressBadge').className = 'badge-pending';
+          }
+        }
+
+        if (data.external_tx_hash) {
+          document.getElementById('trackerExtTx').innerText = data.external_tx_hash.slice(0, 22) + '...';
+        }
+
+        if (data.is_settled) {
+          clearInterval(trackerTimer);
+          pBar.style.width = '100%';
+          document.getElementById('trackerProgressBadge').className = 'badge-ok';
+          document.getElementById('trackerProgressBadge').innerText = 'SETTLED & MINTED';
+          document.getElementById('step3Box').style.background = 'rgba(57, 255, 20, 0.15)';
+          document.getElementById('step3Box').style.borderColor = 'var(--accent-green)';
+          document.getElementById('step3Detail').innerText = 'UTXO Active';
+
+          latestMintTxHash = data.kpl_tx_hash;
+          document.getElementById('trackerKplTx').innerText = data.kpl_tx_hash.slice(0, 22) + '...';
+          document.getElementById('downloadOrderReceiptBtn').style.display = 'inline-block';
+        }
+      } catch (err) {
+        console.warn('Tracker poll error:', err);
+      }
+    }
+
+    async function simulateInstantConfirm() {
+      if (!currentOrderId) return;
+      try {
+        const res = await fetch('/api/bridge/simulate-confirm', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({order_id: currentOrderId})
+        });
+        const data = await res.json();
+        pollTracker(currentOrderId);
+      } catch (err) {
+        alert('Simulation error: ' + err.message);
+      }
+    }
+
+    function downloadCurrentOrderReceipt() {
+      if (latestMintTxHash) {
+        downloadReceipt(latestMintTxHash);
       }
     }
 
