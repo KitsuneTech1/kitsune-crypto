@@ -29,6 +29,7 @@ fn print_help() {
     println!("  kpl-cli wallet generate");
     println!("  kpl-cli wallet import \"<12_word_mnemonic>\"");
     println!("  kpl-cli wallet export <private_spend_hex>");
+    println!("  kpl-cli wallet paper [--out <filename.html>]");
     println!("  kpl-cli status [--node <host:port>]");
     println!("  kpl-cli bridge quote <chain> <asset> <amount> [--server <host:port>]");
     println!("  kpl-cli bridge deposit <chain> <asset> <amount> <kpl_recipient> [--server <host:port>]");
@@ -129,11 +130,83 @@ fn main() {
                 } else {
                     eprintln!("Invalid hex string");
                 }
+            } else if args.len() >= 3 && args[2] == "paper" {
+                let mut entropy = [0u8; 16];
+                rand::RngCore::fill_bytes(&mut OsRng, &mut entropy);
+                let phrase = entropy_to_mnemonic(&entropy);
+                let seed = mnemonic_to_seed(&phrase);
+                let (spend_sec, view_sec, _spend_pub, _view_pub, addr) = seed_to_stealth_keys(&seed);
+
+                let mut out_file = format!("kpl-paper-wallet-{}.html", &addr[4..12]);
+                if args.len() >= 5 && args[3] == "--out" {
+                    out_file = args[4].clone();
+                }
+
+                println!("=== AIR-GAPPED COLD STORAGE PAPER WALLET ===");
+                println!("Public Address:    {}", addr);
+                println!("12-Word Mnemonic:  \"{}\"", phrase);
+                println!("Private View Key:  {}", hex::encode(view_sec.as_bytes()));
+                println!("Private Spend Key: {}", hex::encode(spend_sec.as_bytes()));
+                println!("--------------------------------------------");
+
+                let html_doc = format!(r#"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>KPL Cold Storage Paper Wallet</title>
+<style>
+  body {{ font-family: 'Courier New', monospace; background: #080a0f; color: #f0f6fc; padding: 30px; }}
+  .wallet-card {{ border: 2px dashed #00f2fe; border-radius: 12px; padding: 24px; max-width: 680px; margin: 0 auto; background: #0e121a; }}
+  .header {{ text-align: center; border-bottom: 2px solid #00f2fe; padding-bottom: 12px; margin-bottom: 16px; }}
+  .title {{ font-size: 18px; font-weight: bold; color: #00f2fe; }}
+  .section {{ margin-bottom: 16px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 6px; }}
+  .label {{ font-size: 11px; color: #8b949e; text-transform: uppercase; margin-bottom: 4px; }}
+  .value {{ font-size: 12px; word-break: break-all; color: #fff; font-weight: bold; }}
+  .phrase-box {{ background: #161b22; border: 1px solid #30363d; padding: 12px; border-radius: 6px; font-size: 13px; color: #39ff14; text-align: center; letter-spacing: 1px; }}
+  .warning {{ border: 1px solid #ff007a; background: rgba(255,0,122,0.1); color: #ff007a; padding: 8px; border-radius: 6px; font-size: 10px; text-align: center; margin-top: 16px; }}
+</style>
+</head>
+<body>
+<div class="wallet-card">
+  <div class="header">
+    <div class="title">KITSUNE PRIVATE LAYER (KPL) // COLD STORAGE</div>
+    <div style="font-size: 11px; color: #8b949e;">Air-Gapped Cryptographic Paper Wallet</div>
+  </div>
+  <div class="section">
+    <div class="label">Public Stealth Address (Deposit / Receive Only):</div>
+    <div class="value" style="color: #00f2fe;">{}</div>
+  </div>
+  <div class="section">
+    <div class="label">12-Word BIP-39 Recovery Mnemonic (DO NOT SHARE):</div>
+    <div class="phrase-box">{}</div>
+  </div>
+  <div class="section">
+    <div class="label">Private View Secret Key (Audit Only):</div>
+    <div class="value">{}</div>
+  </div>
+  <div class="section">
+    <div class="label">Private Spend Secret Key (FULL AUTHORITY TO SPEND):</div>
+    <div class="value" style="color: #ff007a;">{}</div>
+  </div>
+  <div class="warning">
+    WARNING: Anyone with access to your 12-word mnemonic or Spend Key can permanently spend your funds. Keep this sheet in a safe, fireproof location.
+  </div>
+</div>
+</body>
+</html>"#, addr, phrase, hex::encode(view_sec.as_bytes()), hex::encode(spend_sec.as_bytes()));
+
+                if let Ok(_) = std::fs::write(&out_file, html_doc) {
+                    println!("Saved printable paper wallet certificate to: {}", out_file);
+                } else {
+                    eprintln!("Failed to write paper wallet to {}", out_file);
+                }
+                println!("============================================");
             } else {
                 println!("Usage:");
                 println!("  kpl-cli wallet generate");
                 println!("  kpl-cli wallet import \"<word1> <word2> ... <word12>\"");
                 println!("  kpl-cli wallet export <private_spend_key>");
+                println!("  kpl-cli wallet paper [--out <filename.html>]");
             }
         }
         "status" => {
