@@ -358,6 +358,37 @@ docker compose up -d
       </div>
     </div>
 
+    <!-- FAQ Section -->
+    <div class="table-card" id="faq">
+      <h2 style="font-size: 20px; margin-bottom: 6px;">Frequently Asked Questions</h2>
+      <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 20px;">Common questions about speeds, fees, consensus, and privacy:</p>
+      
+      <div style="margin-bottom: 16px;">
+        <h4 style="font-size: 15px; color: var(--accent); margin-bottom: 4px;">1. How fast are cross-chain deposits and withdrawals?</h4>
+        <p style="font-size: 13px; color: var(--text-muted);">EVM Layer-2 stablecoins (Base & Arbitrum USDC) and Solana complete in 2 to 3 seconds. Bitcoin Lightning payments settle in under 1 second. Monero atomic swaps complete in approximately 2 minutes.</p>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <h4 style="font-size: 15px; color: var(--accent); margin-bottom: 4px;">2. What are the network and bridge fees?</h4>
+        <p style="font-size: 13px; color: var(--text-muted);">The base network transaction fee is fixed at 0.05 KPL. Fast bridge swaps carry a transparent 0.15% liquidity fee (minimum $0.50) with zero hidden slippage.</p>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <h4 style="font-size: 15px; color: var(--accent); margin-bottom: 4px;">3. How does KPL protect privacy without trusted setups?</h4>
+        <p style="font-size: 13px; color: var(--text-muted);">Every transfer derives one-time stealth addresses ($P = H(rA)G + B$) and 16-member ring signatures (CLSAG) over Curve25519. Zero-knowledge range proofs utilize Bulletproofs+, which require zero trusted setup parameters.</p>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <h4 style="font-size: 15px; color: var(--accent); margin-bottom: 4px;">4. Is there a centralized custodian holding bridged funds?</h4>
+        <p style="font-size: 13px; color: var(--text-muted);">No. Bridge operations utilize non-custodial hash-time locked contracts (HTLC) and cryptographic adaptor signatures. If a counterparty or relayer becomes unresponsive, timelocks guarantee automatic refund of your principal.</p>
+      </div>
+
+      <div style="margin-bottom: 8px;">
+        <h4 style="font-size: 15px; color: var(--accent); margin-bottom: 4px;">5. How does consensus eliminate 51% attacks and reorganizations?</h4>
+        <p style="font-size: 13px; color: var(--text-muted);">Consensus employs single-slot Byzantine Fault Tolerance with Quorum Certificates signed by $\ge 2f + 1$ validators. Unlike Proof-of-Work, chain reorganizations and forks are mathematically impossible under Byzantine threshold $f < n/3$.</p>
+      </div>
+    </div>
+
     <footer>
       Kitsune Cryptographic Research Fleet & Moo · MIT Licensed Open Source
     </footer>

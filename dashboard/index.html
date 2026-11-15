@@ -468,12 +468,34 @@
               <span style="color:${isPending ? '#ffa726' : 'var(--accent-green)'}; font-weight:700;">● ${tx.status || 'CONFIRMED'} ${tx.block_height ? '#' + tx.block_height : ''}</span>
             </div>
             <div style="color:var(--text-muted); font-size:10px;">Key Image: ${tx.key_image ? tx.key_image.slice(0, 20) + '...' : '---'}</div>
-            <div style="margin-top:2px; font-size:10px;">Amount: <strong>${((tx.amount_atomic || 0) / 1000000).toFixed(6)} KPL</strong> | Ring Size: ${tx.ring_size || 5} decoys</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+              <span style="font-size:10px;">Amount: <strong>${((tx.amount_atomic || 0) / 1000000).toFixed(6)} KPL</strong> | Ring: ${tx.ring_size || 5}</span>
+              <button class="btn-secondary" style="font-size:9px; padding:3px 8px; cursor:pointer;" onclick="downloadReceipt('${tx.tx_hash}')">DOWNLOAD RECEIPT</button>
+            </div>
           `;
           container.appendChild(div);
         });
       } catch (err) {
         console.warn('Mempool fetch error:', err);
+      }
+    }
+
+    async function downloadReceipt(txHash) {
+      if (!txHash) return;
+      try {
+        const res = await fetch(`/api/tx/receipt?hash=${encodeURIComponent(txHash)}`);
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `kpl-receipt-${txHash.slice(0, 8)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Failed to download receipt: ' + err.message);
       }
     }
 
